@@ -1,30 +1,19 @@
-import json
-from pathlib import Path
+from common import asset_path, load_json, save_json
 
-
-STATE_FILE = Path(__file__).resolve().parent / "assets" / "app_state.json"
+STATE_FILE = asset_path("app_state.json")
 
 
 def has_saved_state() -> bool:
-    print(f"Checking for saved state at: {STATE_FILE}")
     return STATE_FILE.exists()
 
 
 def save_state(payload: dict) -> None:
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with STATE_FILE.open("w", encoding="utf-8") as file:
-        json.dump(payload, file, indent=2)
+    save_json(STATE_FILE, payload)
 
 
 def load_state() -> dict | None:
-    if not STATE_FILE.exists():
-        return None
-
-    try:
-        with STATE_FILE.open("r", encoding="utf-8") as file:
-            return json.load(file)
-    except json.JSONDecodeError:
-        return None
+    data = load_json(STATE_FILE, default=None)
+    return data if isinstance(data, dict) else None
 
 
 def clear_state() -> None:

@@ -1,4 +1,4 @@
-PERSPECTIVES = {"global", "alice", "bob", "attacker"}
+from common import PERSPECTIVE_SET
 
 
 def serialize_app_state(app_state) -> dict:
@@ -10,16 +10,14 @@ def serialize_app_state(app_state) -> dict:
 
 
 def apply_app_state(app_state, data: dict) -> None:
-    app_state.current_module = data.get(
-        "current_module", app_state.current_module
-    )
+    app_state.current_module = data.get("current_module", app_state.current_module)
 
     current_step = data.get("current_step", app_state.current_step)
     if isinstance(current_step, int) and current_step >= 0:
         app_state.current_step = current_step
 
     perspective = data.get("perspective", app_state.perspective)
-    if perspective in PERSPECTIVES:
+    if perspective in PERSPECTIVE_SET:
         app_state.perspective = perspective
 
 

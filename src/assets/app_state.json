@@ -2,7 +2,7 @@
   "app_state": {
     "current_module": "double_ratchet",
     "current_step": 3,
-    "perspective": "global"
+    "perspective": "attacker"
   },
   "modules": {
     "double_ratchet": {
