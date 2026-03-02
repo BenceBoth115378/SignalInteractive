@@ -11,8 +11,8 @@ def _get_sender_receiver_parties(session: DoubleRatchetState) -> tuple[PartyStat
     else:
         sender_name, receiver_name = "Alice", "Bob"
 
-    sender_party = session.alice if sender_name == "Alice" else session.bob
-    receiver_party = session.alice if receiver_name == "Alice" else session.bob
+    sender_party = session.initializer if sender_name == "Alice" else session.responder
+    receiver_party = session.initializer if receiver_name == "Alice" else session.responder
     return sender_party, receiver_party
 
 

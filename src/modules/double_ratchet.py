@@ -29,7 +29,7 @@ class DoubleRatchetModule(BaseModule):
         log_data = data.get("message_log", [])
 
         self.session = DoubleRatchetState(
-            alice=PartyState(
+            initializer=PartyState(
                 name=alice_data.get("name", "Alice"),
                 dh_private=alice_data.get("dh_private", ""),
                 dh_public=alice_data.get("dh_public", ""),
@@ -37,7 +37,7 @@ class DoubleRatchetModule(BaseModule):
                 sending_chain=alice_data.get("sending_chain", ""),
                 receiving_chain=alice_data.get("receiving_chain", ""),
             ),
-            bob=PartyState(
+            responder=PartyState(
                 name=bob_data.get("name", "Bob"),
                 dh_private=bob_data.get("dh_private", ""),
                 dh_public=bob_data.get("dh_public", ""),

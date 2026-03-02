@@ -16,6 +16,6 @@ class AppState:
 
 @dataclass
 class DoubleRatchetState:
-    alice: PartyState = field(default_factory=lambda: PartyState("Alice"))
-    bob: PartyState = field(default_factory=lambda: PartyState("Bob"))
+    initializer: PartyState = field(default_factory=lambda: PartyState("Alice"))
+    responder: PartyState = field(default_factory=lambda: PartyState("Bob"))
     message_log: list[MessageState] = field(default_factory=list)

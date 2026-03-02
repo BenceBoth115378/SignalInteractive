@@ -17,8 +17,8 @@ def derive_message_key(chain_key: str) -> tuple[str, str]:
 
 
 def initialize_session(session: DoubleRatchetState) -> None:
-    alice = session.alice
-    bob = session.bob
+    alice = session.initializer
+    bob = session.responder
 
     alice.dh_private = "A0_priv"
     alice.dh_public = "A0_pub"
@@ -35,7 +35,7 @@ def initialize_session(session: DoubleRatchetState) -> None:
 
 
 def alice_sends(session: DoubleRatchetState) -> None:
-    alice = session.alice
+    alice = session.initializer
     mk, next_ck = derive_message_key(alice.sending_chain)
 
     session.message_log.append(
@@ -53,7 +53,7 @@ def bob_receives(session: DoubleRatchetState) -> None:
     if not session.message_log:
         return
 
-    bob = session.bob
+    bob = session.responder
     msg = session.message_log[-1]
     mk, next_ck = derive_message_key(bob.receiving_chain)
 
@@ -62,8 +62,8 @@ def bob_receives(session: DoubleRatchetState) -> None:
 
 
 def bob_sends_with_dh_ratchet(session: DoubleRatchetState) -> None:
-    alice = session.alice
-    bob = session.bob
+    alice = session.initializer
+    bob = session.responder
 
     bob.dh_private = "B1_priv"
     bob.dh_public = "B1_pub"
@@ -93,7 +93,7 @@ def alice_receives_dh(session: DoubleRatchetState) -> None:
     if not session.message_log:
         return
 
-    alice = session.alice
+    alice = session.initializer
     msg = session.message_log[-1]
     mk, next_ck = derive_message_key(alice.receiving_chain)
 
