@@ -1,0 +1,9 @@
+{
+  "double_ratchet": {
+    "dh_public": "Public Diffie-Hellman key shared with the other party. Used with the peer private key during DH ratchet updates.",
+    "dh_private": "Private Diffie-Hellman key. It must remain secret and is combined with the peer public key to derive fresh secrets.",
+    "root_key": "Master secret state of the ratchet. It evolves after DH steps and is used to derive new chain keys.",
+    "sending_chain": "Current sender chain key. Advanced for each outgoing message to produce a one-time message key.",
+    "receiving_chain": "Current receiver chain key. Advanced for each incoming message to reproduce the correct message key."
+  }
+}

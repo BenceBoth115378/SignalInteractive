@@ -1,0 +1,28 @@
+{
+  "app_state": {
+    "current_module": "double_ratchet",
+    "current_step": 0,
+    "perspective": "global"
+  },
+  "modules": {
+    "double_ratchet": {
+      "alice": {
+        "name": "Alice",
+        "dh_private": "A0_priv",
+        "dh_public": "A0_pub",
+        "root_key": "RK0",
+        "sending_chain": "CK_A0",
+        "receiving_chain": "CK_A0"
+      },
+      "bob": {
+        "name": "Bob",
+        "dh_private": "B0_priv",
+        "dh_public": "B0_pub",
+        "root_key": "RK0",
+        "sending_chain": "CK_A0",
+        "receiving_chain": "CK_A0"
+      },
+      "message_log": []
+    }
+  }
+}
