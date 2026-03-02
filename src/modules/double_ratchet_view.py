@@ -41,7 +41,12 @@ def _build_party_panel(party: PartyState, perspective: str, role_title: str | No
 
 
 def build_timeline(session: DoubleRatchetState, perspective: str):
-    col = ft.Column([ft.Text("Message Timeline", weight="bold")])
+    col = ft.Column(
+        [ft.Text("Message Timeline", weight="bold")],
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
+        spacing=6,
+    )
 
     for i, msg in enumerate(session.message_log):
         if perspective == "attacker":
@@ -75,24 +80,21 @@ def build_visual(session: DoubleRatchetState, perspective: str):
     receiver_panel = _build_party_panel(receiver_party, perspective, role_title="Receiver")
     timeline = build_timeline(session, perspective)
 
+    timeline_container = ft.Container(
+        content=timeline,
+        expand=True,
+        height=520,
+        padding=10,
+    )
+
     return ft.Row(
         [
             ft.Container(sender_panel, expand=1, padding=10),
             ft.VerticalDivider(),
-            ft.Container(timeline, expand=1, padding=10),
+            ft.Container(timeline_container, expand=1, padding=10),
             ft.VerticalDivider(),
             ft.Container(receiver_panel, expand=1, padding=10),
         ],
         expand=True,
+        vertical_alignment=ft.CrossAxisAlignment.START,
     )
-
-
-def build_explanation(step: int):
-    explanations = {
-        0: "Initial state: Both share RK0 and initial chains.",
-        1: "Alice sends first message using symmetric ratchet.",
-        2: "Bob decrypts using receiving chain.",
-        3: "Bob generates new DH key and performs DH ratchet.",
-        4: "Alice receives and updates receiving chain.",
-    }
-    return ft.Text(explanations.get(step, "More steps soon..."))

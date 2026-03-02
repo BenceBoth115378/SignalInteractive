@@ -10,7 +10,7 @@ from modules.double_ratchet_logic import (
     bob_sends_with_dh_ratchet,
     initialize_session,
 )
-from modules.double_ratchet_view import build_explanation, build_visual
+from modules.double_ratchet_view import build_visual
 from modules.message_state import MessageState
 from modules.party_state import PartyState
 
@@ -58,30 +58,31 @@ class DoubleRatchetModule(BaseModule):
             ],
         )
 
+    def send_message(self, app_state, sender: str) -> None:
+        if sender == "alice":
+            alice_sends(self.session)
+            bob_receives(self.session)
+        elif sender == "bob":
+            # Keep your existing DH-ratchet behavior for Bob messages
+            bob_sends_with_dh_ratchet(self.session)
+            alice_receives_dh(self.session)
+
+        app_state.current_step = len(self.session.message_log)
+
     def build(self, page, app_state):
         return ft.Column(
             controls=[
                 ft.Text("Double Ratchet Simulation", size=22, weight="bold"),
+                ft.Text(f"Messages exchanged: {len(self.session.message_log)}"),
                 build_visual(self.session, app_state.perspective),
-                ft.Divider(),
-                build_explanation(app_state.current_step),
             ],
             expand=True,
         )
 
+    # Keep compatibility with existing base/navigation calls if any remain
     def next_step(self, app_state):
-        actions = {
-            0: alice_sends,
-            1: bob_receives,
-            2: bob_sends_with_dh_ratchet,
-            3: alice_receives_dh,
-        }
-        action = actions.get(app_state.current_step)
-        if action:
-            action(self.session)
-
-        app_state.current_step += 1
+        self.send_message(app_state, sender="alice")
 
     def prev_step(self, app_state):
-        if app_state.current_step > 0:
-            app_state.current_step -= 1
+        # Not reversible without full state history.
+        pass

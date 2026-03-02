@@ -1,45 +1,28 @@
 {
   "app_state": {
     "current_module": "double_ratchet",
-    "current_step": 3,
-    "perspective": "attacker"
+    "current_step": 0,
+    "perspective": "global"
   },
   "modules": {
     "double_ratchet": {
-      "alice": {
+      "initializer": {
         "name": "Alice",
         "dh_private": "A0_priv",
         "dh_public": "A0_pub",
-        "root_key": "KDF(RK0+DH(B1_xA0_))",
-        "sending_chain": "CK(CK_A0)",
-        "receiving_chain": "CK_B1"
+        "root_key": "RK0",
+        "sending_chain": "CK_A0",
+        "receiving_chain": "CK_A0"
       },
-      "bob": {
+      "responder": {
         "name": "Bob",
-        "dh_private": "B1_priv",
-        "dh_public": "B1_pub",
-        "root_key": "KDF(RK0+DH(B1_xA0_))",
-        "sending_chain": "CK(CK_B1)",
-        "receiving_chain": "CK(CK_A0)"
+        "dh_private": "B0_priv",
+        "dh_public": "B0_pub",
+        "root_key": "RK0",
+        "sending_chain": "CK_A0",
+        "receiving_chain": "CK_A0"
       },
-      "message_log": [
-        {
-          "sender": "Alice",
-          "receiver": "Bob",
-          "message_key": "MK(CK_A0)",
-          "cipher": "ENC(MK(CK_A0))",
-          "decrypted_by_bob": "MK(CK_A0)",
-          "decrypted_by_alice": ""
-        },
-        {
-          "sender": "Bob",
-          "receiver": "Alice",
-          "message_key": "MK(CK_B1)",
-          "cipher": "ENC(MK(CK_B1))",
-          "decrypted_by_bob": "",
-          "decrypted_by_alice": ""
-        }
-      ]
+      "message_log": []
     }
   }
 }
