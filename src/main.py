@@ -1,11 +1,10 @@
 import flet as ft
-from state import AppState
-from router import Router
+from components.state import AppState
+from components.router import Router
 from components.navigation import build_navigation
-from persistence import clear_state, has_saved_state, load_state, save_state
-
-
-PERSPECTIVES = {"global", "alice", "bob", "attacker"}
+from components.startup_prompt import build_startup_prompt
+from components.persistence import clear_state, has_saved_state, load_state, save_state
+from components.session_payload import apply_payload, serialize_payload
 
 
 def main(page: ft.Page):
@@ -18,44 +17,29 @@ def main(page: ft.Page):
     router = Router()
     saved_state_exists = has_saved_state()
     autosave_enabled = not saved_state_exists
-    
-    
+    waiting_for_startup_choice = saved_state_exists
 
     main_container = ft.Column(expand=True)
-
-    def _serialize_app_state() -> dict:
-        return {
-            "current_module": app_state.current_module,
-            "current_step": app_state.current_step,
-            "perspective": app_state.perspective,
-        }
-
-    def _apply_app_state(data: dict) -> None:
-        app_state.current_module = data.get(
-            "current_module", app_state.current_module
-        )
-
-        current_step = data.get("current_step", app_state.current_step)
-        if isinstance(current_step, int) and current_step >= 0:
-            app_state.current_step = current_step
-
-        perspective = data.get("perspective", app_state.perspective)
-        if perspective in PERSPECTIVES:
-            app_state.perspective = perspective
 
     def _persist_runtime_state() -> None:
         if not autosave_enabled:
             return
 
-        save_state(
-            {
-                "app_state": _serialize_app_state(),
-                "modules": router.export_state(),
-            }
-        )
+        save_state(serialize_payload(app_state, router))
 
     def refresh():
+        nonlocal waiting_for_startup_choice
+
         main_container.controls.clear()
+
+        if waiting_for_startup_choice:
+            startup_prompt = build_startup_prompt(
+                on_start_new=_start_new,
+                on_load_saved=_load_saved,
+            )
+            main_container.controls.append(startup_prompt)
+            page.update()
+            return
 
         module = router.get_current_module(app_state)
         content = module.build(page, app_state)
@@ -71,53 +55,35 @@ def main(page: ft.Page):
         _persist_runtime_state()
 
     def _start_new(e):
-        nonlocal app_state, router, autosave_enabled
+        nonlocal app_state, router
+        nonlocal autosave_enabled, waiting_for_startup_choice
 
         clear_state()
         app_state = AppState()
         router = Router()
         autosave_enabled = True
+        waiting_for_startup_choice = False
 
-        page.dialog.open = False
         refresh()
 
     def _load_saved(e):
-        nonlocal autosave_enabled
+        nonlocal autosave_enabled, waiting_for_startup_choice
 
         saved_state = load_state()
         if saved_state is None:
             autosave_enabled = True
+            waiting_for_startup_choice = False
             refresh()
             return
 
-        _apply_app_state(saved_state.get("app_state", {}))
-        router.import_state(saved_state.get("modules", {}))
+        apply_payload(app_state, router, saved_state)
         autosave_enabled = True
+        waiting_for_startup_choice = False
 
-        page.dialog.open = False
         refresh()
-
-    def _show_startup_choice() -> None:
-        page.dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Resume previous session?"),
-            content=ft.Text(
-                "A saved simulator state was found. "
-                "Load it or start from zero."
-            ),
-            actions=[
-                ft.Button("Start new", on_click=_start_new),
-                ft.Button("Load saved", on_click=_load_saved),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
-        )
-        page.dialog.open = True
-        page.update()
 
     page.add(main_container)
     refresh()
-    if saved_state_exists:
-        _show_startup_choice()
 
 
 ft.run(main)

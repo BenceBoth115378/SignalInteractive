@@ -6,6 +6,7 @@ STATE_FILE = Path(__file__).resolve().parent / "assets" / "app_state.json"
 
 
 def has_saved_state() -> bool:
+    print(f"Checking for saved state at: {STATE_FILE}")
     return STATE_FILE.exists()
 
 
