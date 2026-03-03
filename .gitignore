@@ -162,3 +162,4 @@ cython_debug/
 # Flet
 storage/
 src/assets/app_state.json
+src/assets/app_state.json
