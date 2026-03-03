@@ -1,9 +1,13 @@
 {
   "double_ratchet": {
-    "dh_public": "Public Diffie-Hellman key shared with the other party. Used with the peer private key during DH ratchet updates.",
-    "dh_private": "Private Diffie-Hellman key. It must remain secret and is combined with the peer public key to derive fresh secrets.",
-    "root_key": "Master secret state of the ratchet. It evolves after DH steps and is used to derive new chain keys.",
-    "sending_chain": "Current sender chain key. Advanced for each outgoing message to produce a one-time message key.",
-    "receiving_chain": "Current receiver chain key. Advanced for each incoming message to reproduce the correct message key."
+    "DHs": "This party's current Diffie-Hellman ratchet key pair (displayed by public key). It rotates on DH ratchet steps to provide forward secrecy.",
+    "DHr": "The latest remote Diffie-Hellman public key received from the peer. It is combined with the local private ratchet key to derive fresh secrets.",
+    "RK": "Root key for the Double Ratchet. It evolves during DH ratchet updates and is used to derive new sending and receiving chain keys.",
+    "CKs": "Sending chain key. It advances for each outgoing message and derives a one-time message key for encryption.",
+    "CKr": "Receiving chain key. It advances for each incoming message and derives the matching message key for decryption.",
+    "Ns": "Number of messages sent in the current sending chain.",
+    "Nr": "Number of messages received in the current receiving chain.",
+    "PN": "Length of the previous sending chain before the last DH ratchet step.",
+    "MKSKIPPED": "Storage for skipped message keys used to decrypt out-of-order messages. Entries are indexed by remote DH key and message number."
   }
 }

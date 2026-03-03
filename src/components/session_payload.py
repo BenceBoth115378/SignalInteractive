@@ -1,34 +1,30 @@
 from common import PERSPECTIVE_SET
+from components.data_classes import AppState
 
 
-def serialize_app_state(app_state) -> dict:
+def serialize_app_state(app_state: AppState) -> dict:
     return {
         "current_module": app_state.current_module,
-        "current_step": app_state.current_step,
         "perspective": app_state.perspective,
     }
 
 
-def apply_app_state(app_state, data: dict) -> None:
+def apply_app_state(app_state: AppState, data: dict) -> None:
     app_state.current_module = data.get("current_module", app_state.current_module)
-
-    current_step = data.get("current_step", app_state.current_step)
-    if isinstance(current_step, int) and current_step >= 0:
-        app_state.current_step = current_step
 
     perspective = data.get("perspective", app_state.perspective)
     if perspective in PERSPECTIVE_SET:
         app_state.perspective = perspective
 
 
-def serialize_payload(app_state, router) -> dict:
+def serialize_payload(app_state: AppState, router) -> dict:
     return {
         "app_state": serialize_app_state(app_state),
         "modules": router.export_state(),
     }
 
 
-def apply_payload(app_state, router, payload: dict) -> bool:
+def apply_payload(app_state: AppState, router, payload: dict) -> bool:
     if not isinstance(payload, dict):
         return False
 

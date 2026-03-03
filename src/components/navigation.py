@@ -39,18 +39,9 @@ def build_navigation(
         on_change=perspective_changed,
     )
 
-    message_actions = ft.Row(
-        [
-            ft.Button("Alice → Bob", on_click=send_alice_to_bob),
-            ft.Button("Bob → Alice", on_click=send_bob_to_alice),
-        ],
-        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-    )
-
     return ft.Column(
         [
             ft.Divider(),
             perspective_selector,
-            message_actions,
         ]
     )

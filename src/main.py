@@ -1,5 +1,5 @@
 import flet as ft
-from components.state import AppState
+from components.data_classes import AppState
 from components.router import Router
 from components.navigation import build_navigation
 from components.startup_prompt import build_startup_prompt

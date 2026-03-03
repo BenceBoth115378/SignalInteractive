@@ -1,4 +1,4 @@
-from modules.double_ratchet import DoubleRatchetModule
+from modules.double_ratchet.module import DoubleRatchetModule
 
 
 class Router:

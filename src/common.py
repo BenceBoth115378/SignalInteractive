@@ -27,7 +27,8 @@ def load_json(path: Path, default: Any = None) -> Any:
     try:
         with path.open("r", encoding="utf-8") as file:
             return json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"Error loading JSON from {path}: {e}")
         return default
 
 
@@ -39,5 +40,6 @@ def save_json(path: Path, payload: dict) -> None:
 
 @lru_cache(maxsize=8)
 def load_asset_json_cached(filename: str) -> dict:
-    data = load_json(asset_path(filename), default={})
+    path = asset_path(filename)
+    data = load_json(path, default={})
     return data if isinstance(data, dict) else {}
