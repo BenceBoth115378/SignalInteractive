@@ -5,19 +5,14 @@ from modules.base_view import format_key, last_n_chars, make_copy_handler
 from modules.tooltip_helpers import build_tooltip_text, get_tooltip_messages
 
 
-def _get_sender_receiver_parties(session: DoubleRatchetState) -> tuple[PartyState, PartyState]:
-    if session.message_log:
-        latest = session.message_log[-1]
-        sender_name, receiver_name = latest.sender, latest.receiver
-    else:
-        sender_name, receiver_name = "Alice", "Bob"
-
-    sender_party = session.initializer if sender_name == "Alice" else session.responder
-    receiver_party = session.initializer if receiver_name == "Alice" else session.responder
-    return sender_party, receiver_party
-
-
-def _build_party_panel(page: ft.Page, party: PartyState, perspective: str, role_title: str | None = None):
+def _build_party_panel(
+    page: ft.Page,
+    party: PartyState,
+    perspective: str,
+    role_title: str | None = None,
+    message_input: ft.TextField | None = None,
+    on_send=None,
+):
     visible = perspective == "global" or perspective.lower() == party.name.lower()
     header = party.name if role_title is None else f"{role_title}: {party.name}"
     tooltips = get_tooltip_messages("double_ratchet")
@@ -34,54 +29,65 @@ def _build_party_panel(page: ft.Page, party: PartyState, perspective: str, role_
     cks_value = last_n_chars(cks_full, 8) if visible else "Hidden"
     ckr_value = last_n_chars(ckr_full, 8) if visible else "Hidden"
 
+    panel_controls = [
+        ft.Text(
+            header,
+            size=18,
+            weight="bold",
+            text_align=ft.TextAlign.LEFT
+        ),
+        build_tooltip_text(
+            "DHs",
+            dhs_value,
+            tooltips.get("DHs", ""),
+            full_value=dhs_full if visible else None,
+            on_click=make_copy_handler(page, "DHs", dhs_full) if visible else None,
+        ),
+        build_tooltip_text(
+            "DHr",
+            dhr_value,
+            tooltips.get("DHr", ""),
+            full_value=dhr_full if visible else None,
+            on_click=make_copy_handler(page, "DHr", dhr_full) if visible else None,
+        ),
+        build_tooltip_text(
+            "RK",
+            rk_value,
+            tooltips.get("RK", ""),
+            full_value=rk_full if visible else None,
+            on_click=make_copy_handler(page, "RK", rk_full) if visible else None,
+        ),
+        build_tooltip_text(
+            "CKs",
+            cks_value,
+            tooltips.get("CKs", ""),
+            full_value=cks_full if visible else None,
+            on_click=make_copy_handler(page, "CKs", cks_full) if visible else None,
+        ),
+        build_tooltip_text(
+            "CKr",
+            ckr_value,
+            tooltips.get("CKr", ""),
+            full_value=ckr_full if visible else None,
+            on_click=make_copy_handler(page, "CKr", ckr_full) if visible else None,
+        ),
+        build_tooltip_text("Ns", str(party.Ns), tooltips.get("Ns", "")),
+        build_tooltip_text("Nr", str(party.Nr), tooltips.get("Nr", "")),
+        build_tooltip_text("PN", str(party.PN), tooltips.get("PN", "")),
+        build_tooltip_text("MKSKIPPED", str(len(party.MKSKIPPED)), tooltips.get("MKSKIPPED", "")),
+    ]
+
+    if message_input is not None and on_send is not None:
+        panel_controls.extend(
+            [
+                ft.Divider(height=12),
+                message_input,
+                ft.Button("Send", on_click=on_send),
+            ]
+        )
+
     return ft.Column(
-        [
-            ft.Text(
-                header,
-                size=18,
-                weight="bold",
-                text_align=ft.TextAlign.LEFT
-            ),
-            build_tooltip_text(
-                "DHs",
-                dhs_value,
-                tooltips.get("DHs", ""),
-                full_value=dhs_full if visible else None,
-                on_click=make_copy_handler(page, "DHs", dhs_full) if visible else None,
-            ),
-            build_tooltip_text(
-                "DHr",
-                dhr_value,
-                tooltips.get("DHr", ""),
-                full_value=dhr_full if visible else None,
-                on_click=make_copy_handler(page, "DHr", dhr_full) if visible else None,
-            ),
-            build_tooltip_text(
-                "RK",
-                rk_value,
-                tooltips.get("RK", ""),
-                full_value=rk_full if visible else None,
-                on_click=make_copy_handler(page, "RK", rk_full) if visible else None,
-            ),
-            build_tooltip_text(
-                "CKs",
-                cks_value,
-                tooltips.get("CKs", ""),
-                full_value=cks_full if visible else None,
-                on_click=make_copy_handler(page, "CKs", cks_full) if visible else None,
-            ),
-            build_tooltip_text(
-                "CKr",
-                ckr_value,
-                tooltips.get("CKr", ""),
-                full_value=ckr_full if visible else None,
-                on_click=make_copy_handler(page, "CKr", ckr_full) if visible else None,
-            ),
-            build_tooltip_text("Ns", str(party.Ns), tooltips.get("Ns", "")),
-            build_tooltip_text("Nr", str(party.Nr), tooltips.get("Nr", "")),
-            build_tooltip_text("PN", str(party.PN), tooltips.get("PN", "")),
-            build_tooltip_text("MKSKIPPED", str(len(party.MKSKIPPED)), tooltips.get("MKSKIPPED", "")),
-        ],
+        panel_controls,
         spacing=2,
         tight=True,
         horizontal_alignment=ft.CrossAxisAlignment.START,
@@ -126,11 +132,39 @@ def build_timeline(session: DoubleRatchetState, perspective: str):
     return col
 
 
-def build_visual(session: DoubleRatchetState, perspective: str, page: ft.Page):
-    sender_party, receiver_party = _get_sender_receiver_parties(session)
+def build_visual(
+    session: DoubleRatchetState,
+    perspective: str,
+    page: ft.Page,
+    alice_input: ft.TextField | None = None,
+    bob_input: ft.TextField | None = None,
+    on_send_alice=None,
+    on_send_bob=None,
+):
+    initializer_party = session.initializer
+    responder_party = session.responder
 
-    sender_panel = _build_party_panel(page, sender_party, perspective, role_title="Sender")
-    receiver_panel = _build_party_panel(page, receiver_party, perspective, role_title="Receiver")
+    initializer_input = alice_input if initializer_party.name == "Alice" else bob_input
+    responder_input = alice_input if responder_party.name == "Alice" else bob_input
+    initializer_send = on_send_alice if initializer_party.name == "Alice" else on_send_bob
+    responder_send = on_send_alice if responder_party.name == "Alice" else on_send_bob
+
+    initializer_panel = _build_party_panel(
+        page,
+        initializer_party,
+        perspective,
+        role_title="Initializer",
+        message_input=initializer_input,
+        on_send=initializer_send,
+    )
+    responder_panel = _build_party_panel(
+        page,
+        responder_party,
+        perspective,
+        role_title="Responder",
+        message_input=responder_input,
+        on_send=responder_send,
+    )
     timeline = build_timeline(session, perspective)
 
     timeline_container = ft.Container(
@@ -141,11 +175,11 @@ def build_visual(session: DoubleRatchetState, perspective: str, page: ft.Page):
 
     return ft.Row(
         [
-            ft.Container(sender_panel, width=170, padding=10),
+            ft.Container(initializer_panel, expand=True, padding=10),
             ft.VerticalDivider(),
-            ft.Container(timeline_container, expand=True, padding=10),
+            ft.Container(timeline_container, height=400, expand=True, padding=10),
             ft.VerticalDivider(),
-            ft.Container(receiver_panel, width=170, padding=10),
+            ft.Container(responder_panel, expand=True, padding=10),
         ],
         expand=True,
         vertical_alignment=ft.CrossAxisAlignment.START,

@@ -1,19 +1,25 @@
 """
-Mock implementations of the Double Ratchet external functions
+Implementations of the Double Ratchet external functions
 as defined in Signal's specification (Section 3.1).
 
-These are NOT cryptographically secure.
-They are deterministic, symbolic, and suitable only for
-educational / visualization purposes.
+This module uses real cryptographic primitives for:
+- Diffie-Hellman (X25519)
+- AEAD (ChaCha20-Poly1305)
 """
 
 
 import hashlib
 import json
-import os
+from Crypto.Cipher import ChaCha20_Poly1305
+from Crypto.Protocol.DH import key_agreement
+from Crypto.PublicKey import ECC
+from Crypto.Random import get_random_bytes
 from components.data_classes import DHKeyPair, Header
 
 MAX_SKIP = 50
+
+_AEAD_NONCE_LEN = 12
+_AEAD_TAG_LEN = 16
 
 
 def _hash_to_32_bytes(data: bytes) -> bytes:
@@ -38,24 +44,40 @@ def _encode_header(header: Header) -> bytes:
 
 def GENERATE_DH() -> DHKeyPair:
     """
-    Returns a new mock Diffie-Hellman key pair.
+    Returns a new Curve25519 Diffie-Hellman key pair.
+    Both private and public keys are hex-encoded strings.
     """
-    # Generate random 16 bytes and hex-encode
-    priv = os.urandom(16).hex()
-    pub = _hash_to_32_bytes(priv.encode()).hex()
+    private_seed = get_random_bytes(32)
+    private_key = ECC.construct(curve="Curve25519", seed=private_seed)
+    pub = private_key.public_key().export_key(format="raw").hex()
+    priv = private_seed.hex()
     return DHKeyPair(private=priv, public=pub)
 
 
 def DH(dh_pair: DHKeyPair, dh_pub: str) -> bytes:
     """
-    Returns a mock Diffie-Hellman shared secret.
-    Deterministically hashes private + public.
+    Returns a Diffie-Hellman shared secret (32-byte key material).
     """
-    if dh_pub is None:
+    if dh_pair is None or dh_pair.private is None or dh_pub is None:
         raise ValueError("Invalid DH public key")
 
-    combined = dh_pair.private.encode() + dh_pub.encode()
-    return _hash_to_32_bytes(combined)
+    try:
+        private_seed = bytes.fromhex(dh_pair.private)
+        peer_public_raw = bytes.fromhex(dh_pub)
+        private_key = ECC.construct(curve="Curve25519", seed=private_seed)
+        peer_public_key = ECC.construct(
+            curve="Curve25519",
+            point_x=int.from_bytes(peer_public_raw, "little"),
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid DH key encoding") from exc
+
+    shared_secret = key_agreement(
+        static_priv=private_key,
+        static_pub=peer_public_key,
+        kdf=lambda z: z,
+    )
+    return _hash_to_32_bytes(shared_secret)
 
 
 def KDF_RK(rk: bytes, dh_out: bytes) -> tuple[bytes, bytes]:
@@ -87,34 +109,42 @@ def KDF_CK(ck: bytes) -> tuple[bytes, bytes]:
 
 def ENCRYPT(mk: bytes, plaintext: bytes, associated_data: bytes) -> bytes:
     """
-    Mock AEAD encryption.
-    Produces: HASH(mk || ad || plaintext) || plaintext
+    AEAD encryption using ChaCha20-Poly1305.
+    Produces: nonce || tag || ciphertext
     """
     if mk is None:
         raise ValueError("Message key cannot be None")
+    if associated_data is None:
+        associated_data = b""
 
-    tag = _hash_to_32_bytes(mk + associated_data + plaintext)
-    return tag + plaintext
+    cipher = ChaCha20_Poly1305.new(key=mk)
+    cipher.update(associated_data)
+    ciphertext, tag = cipher.encrypt_and_digest(plaintext)
+    return cipher.nonce + tag + ciphertext
 
 
 def DECRYPT(mk: bytes, ciphertext: bytes, associated_data: bytes) -> bytes:
     """
-    Mock AEAD decryption.
+    AEAD decryption using ChaCha20-Poly1305.
     Verifies tag and returns plaintext.
-    Raises exception on authentication failure.
     """
     if mk is None:
         raise ValueError("Message key cannot be None")
+    if associated_data is None:
+        associated_data = b""
+    if ciphertext is None or len(ciphertext) < (_AEAD_NONCE_LEN + _AEAD_TAG_LEN):
+        raise ValueError("Ciphertext too short")
 
-    tag = ciphertext[:32]
-    plaintext = ciphertext[32:]
+    nonce = ciphertext[:_AEAD_NONCE_LEN]
+    tag = ciphertext[_AEAD_NONCE_LEN:_AEAD_NONCE_LEN + _AEAD_TAG_LEN]
+    encrypted = ciphertext[_AEAD_NONCE_LEN + _AEAD_TAG_LEN:]
 
-    expected_tag = _hash_to_32_bytes(mk + associated_data + plaintext)
-
-    if tag != expected_tag:
-        raise ValueError("Authentication failed")
-
-    return plaintext
+    try:
+        cipher = ChaCha20_Poly1305.new(key=mk, nonce=nonce)
+        cipher.update(associated_data)
+        return cipher.decrypt_and_verify(encrypted, tag)
+    except ValueError as e:
+        raise ValueError("Authentication failed") from e
 
 
 def HEADER(dh_pair: DHKeyPair, pn: int, n: int) -> Header:

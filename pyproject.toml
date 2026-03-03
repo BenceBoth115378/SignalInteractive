@@ -8,7 +8,8 @@ authors = [
     { name = "Bence Both", email = "xbothb@stuba.sk" }
 ]
 dependencies = [
-    "flet>=0.80.5"
+    "flet>=0.80.5",
+    "pycryptodome>=3.20.0"
 ]
 
 [dependency-groups]
