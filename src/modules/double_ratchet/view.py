@@ -94,7 +94,12 @@ def _build_party_panel(
     )
 
 
-def build_timeline(session: DoubleRatchetState, perspective: str):
+def build_timeline(
+    session: DoubleRatchetState,
+    perspective: str,
+    pending_messages: list[dict] | None = None,
+    on_receive_pending=None,
+):
     col = ft.Column(
         [
             ft.Row(
@@ -129,6 +134,28 @@ def build_timeline(session: DoubleRatchetState, perspective: str):
 
         col.controls.append(ft.Text(f"[{i}] {display}"))
 
+    if pending_messages is not None:
+        for i, pending in enumerate(pending_messages, start=len(session.message_log)):
+            pending_id = pending.get("id")
+            sender = pending.get("sender", "?")
+            receiver = pending.get("receiver", "?")
+
+            if not isinstance(pending_id, int):
+                continue
+
+            label = f"[{i}] {sender} → {receiver} | PENDING"
+            can_receive = perspective == "global" or perspective.lower() == str(receiver).lower()
+
+            if can_receive and on_receive_pending is not None:
+                col.controls.append(
+                    ft.TextButton(
+                        label,
+                        on_click=lambda e, pid=pending_id, recipient=receiver: on_receive_pending(recipient, pid),
+                    )
+                )
+            else:
+                col.controls.append(ft.Text(label))
+
     return col
 
 
@@ -140,6 +167,8 @@ def build_visual(
     bob_input: ft.TextField | None = None,
     on_send_alice=None,
     on_send_bob=None,
+    pending_messages: list[dict] | None = None,
+    on_receive_pending=None,
 ):
     initializer_party = session.initializer
     responder_party = session.responder
@@ -165,7 +194,12 @@ def build_visual(
         message_input=responder_input,
         on_send=responder_send,
     )
-    timeline = build_timeline(session, perspective)
+    timeline = build_timeline(
+        session,
+        perspective,
+        pending_messages=pending_messages,
+        on_receive_pending=on_receive_pending,
+    )
 
     timeline_container = ft.Container(
         content=timeline,

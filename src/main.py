@@ -10,7 +10,7 @@ from components.session_payload import apply_payload, serialize_payload
 def main(page: ft.Page):
     page.title = "Signal Protocol"
     page.window_width = 1100
-    page.window_height = 750
+    page.window_height = 850
     page.scroll = "auto"
 
     app_state = AppState()

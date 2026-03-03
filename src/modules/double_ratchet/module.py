@@ -2,7 +2,7 @@ import flet as ft
 from dataclasses import asdict
 from typing import Any
 
-from components.data_classes import DoubleRatchetState, MessageState
+from components.data_classes import DoubleRatchetState, Header, MessageState
 from modules.base_module import BaseModule
 from modules.double_ratchet.logic import (
     RatchetDecrypt,
@@ -104,6 +104,8 @@ def _deserialize_message(data: dict) -> MessageState:
 class DoubleRatchetModule(BaseModule):
     def __init__(self):
         self.session = DoubleRatchetState()
+        self.pending_messages: list[dict[str, Any]] = []
+        self._next_pending_id = 1
         initialize_session(self.session)
 
     def export_state(self) -> dict:
@@ -114,12 +116,27 @@ class DoubleRatchetModule(BaseModule):
                 _serialize_message(message)
                 for message in self.session.message_log
             ],
+            "pending_messages": [
+                {
+                    "id": pending["id"],
+                    "sender": pending["sender"],
+                    "receiver": pending["receiver"],
+                    "header": {
+                        "dh": pending["header"].dh,
+                        "pn": pending["header"].pn,
+                        "n": pending["header"].n,
+                    },
+                    "cipher": _encode_bytes(pending["cipher"]),
+                }
+                for pending in self.pending_messages
+            ],
         }
 
     def import_state(self, data: dict) -> None:
         alice_data = data.get("initializer", {})
         bob_data = data.get("responder", {})
         log_data = data.get("message_log", [])
+        pending_data = data.get("pending_messages", [])
 
         self.session = DoubleRatchetState(
             initializer=_deserialize_party(alice_data, "Alice"),
@@ -130,6 +147,42 @@ class DoubleRatchetModule(BaseModule):
                 if isinstance(msg, dict)
             ],
         )
+
+        self.pending_messages = []
+        for pending in pending_data:
+            if not isinstance(pending, dict):
+                continue
+
+            header_data = pending.get("header")
+            if not isinstance(header_data, dict):
+                continue
+
+            sender = pending.get("sender")
+            receiver = pending.get("receiver")
+            pending_id = pending.get("id")
+            header_dh = header_data.get("dh")
+            header_pn = header_data.get("pn")
+            header_n = header_data.get("n")
+
+            if not isinstance(sender, str) or not isinstance(receiver, str):
+                continue
+            if not isinstance(pending_id, int):
+                continue
+            if not isinstance(header_dh, str) or not isinstance(header_pn, int) or not isinstance(header_n, int):
+                continue
+
+            self.pending_messages.append(
+                {
+                    "id": pending_id,
+                    "sender": sender,
+                    "receiver": receiver,
+                    "header": Header(dh=header_dh, pn=header_pn, n=header_n),
+                    "cipher": _decode_bytes(pending.get("cipher")),
+                }
+            )
+
+        max_pending_id = max((item["id"] for item in self.pending_messages), default=0)
+        self._next_pending_id = max_pending_id + 1
 
     def _build_hint_message(self, sender: str) -> str:
         sender_key = sender.lower()
@@ -162,7 +215,55 @@ class DoubleRatchetModule(BaseModule):
             responder=responder,
             message_log=[],
         )
+        self.pending_messages = []
+        self._next_pending_id = 1
         initialize_session(self.session)
+
+    def _initializer_sent_count(self) -> int:
+        initializer_name = self.session.initializer.name
+        delivered_count = sum(
+            1
+            for message in self.session.message_log
+            if message.sender == initializer_name
+        )
+        pending_count = sum(
+            1
+            for pending in self.pending_messages
+            if pending.get("sender") == initializer_name
+        )
+        return delivered_count + pending_count
+
+    def receive_message(self, recipient: str, pending_id: int) -> None:
+        recipient_name = "Alice" if recipient.lower() == "alice" else "Bob"
+
+        pending = next(
+            (
+                item
+                for item in self.pending_messages
+                if item["id"] == pending_id and item["receiver"] == recipient_name
+            ),
+            None,
+        )
+        if pending is None:
+            return
+
+        receiver_state = self._get_party(recipient_name)
+        header = pending["header"]
+        cipher = pending["cipher"]
+        associated_data = b""
+        decrypted = RatchetDecrypt(receiver_state, header, cipher, associated_data)
+
+        self.session.message_log.append(
+            MessageState(
+                sender=pending["sender"],
+                receiver=pending["receiver"],
+                message_key=b"",
+                cipher=cipher,
+                decrypted_by_bob=decrypted if recipient_name == "Bob" else b"",
+                decrypted_by_alice=decrypted if recipient_name == "Alice" else b"",
+            )
+        )
+        self.pending_messages = [item for item in self.pending_messages if item["id"] != pending_id]
 
     def send_message(
         self,
@@ -175,42 +276,67 @@ class DoubleRatchetModule(BaseModule):
         if sender_key not in {"alice", "bob"}:
             return
 
-        if not self.session.message_log and sender_key == "bob":
-            self._reset_session_with_initializer("bob")
-
-        sender_state = self._get_party(sender_key)
-        receiver_state = self._get_party("bob" if sender_key == "alice" else "alice")
-        sender_name = "Alice" if sender_key == "alice" else "Bob"
-        receiver_name = "Bob" if sender_key == "alice" else "Alice"
-
         text_to_send = (plaintext or "").strip()
         if not text_to_send:
             text_to_send = (fallback_plaintext or "").strip()
         if not text_to_send:
             return
 
+        if not self.session.message_log and not self.pending_messages and sender_key == "bob":
+            self._reset_session_with_initializer("bob")
+
+        sender_state = self._get_party(sender_key)
+        sender_name = "Alice" if sender_key == "alice" else "Bob"
+        receiver_name = "Bob" if sender_key == "alice" else "Alice"
+
+        if sender_state.CKs is None:
+            if self._initializer_sent_count() > 1:
+                raise ValueError("Cannot send yet. Receive at least one pending message first.")
+
+            self._reset_session_with_initializer(sender_key)
+            sender_state = self._get_party(sender_key)
+            sender_name = "Alice" if sender_key == "alice" else "Bob"
+            receiver_name = "Bob" if sender_key == "alice" else "Alice"
+
         associated_data = b""
         plaintext_bytes = text_to_send.encode("utf-8")
 
         header, cipher = RatchetEncrypt(sender_state, plaintext_bytes, associated_data)
-        decrypted = RatchetDecrypt(receiver_state, header, cipher, associated_data)
-
-        self.session.message_log.append(
-            MessageState(
-                sender=sender_name,
-                receiver=receiver_name,
-                message_key=b"",
-                cipher=cipher,
-                decrypted_by_bob=decrypted if receiver_name == "Bob" else b"",
-                decrypted_by_alice=decrypted if receiver_name == "Alice" else b"",
-            )
+        self.pending_messages.append(
+            {
+                "id": self._next_pending_id,
+                "sender": sender_name,
+                "receiver": receiver_name,
+                "header": header,
+                "cipher": cipher,
+            }
         )
+        self._next_pending_id += 1
 
     def build(self, page, app_state):
         message_count = ft.Text(f"Messages exchanged: {len(self.session.message_log)}")
         alice_input = ft.TextField(dense=True, expand=True)
         bob_input = ft.TextField(dense=True, expand=True)
         visual_container = ft.Container(expand=True)
+
+        def show_warning(message: str):
+            def close_dialog(e):
+                dialog.open = False
+                page.update()
+
+            dialog = ft.AlertDialog(
+                modal=True,  # <-- This makes it block interaction
+                title=ft.Text("Warning"),
+                content=ft.Text(message),
+                actions=[
+                    ft.TextButton("OK", on_click=close_dialog),
+                ],
+                actions_alignment=ft.MainAxisAlignment.END,
+            )
+
+            page.overlay.append(dialog)
+            dialog.open = True
+            page.update()
 
         def refresh_view() -> None:
             message_count.value = f"Messages exchanged: {len(self.session.message_log)}"
@@ -224,25 +350,40 @@ class DoubleRatchetModule(BaseModule):
                 bob_input,
                 on_send_alice,
                 on_send_bob,
+                pending_messages=self.pending_messages,
+                on_receive_pending=on_receive_pending,
             )
 
         def on_send_alice(e) -> None:
-            self.send_message(
-                sender="alice",
-                plaintext=alice_input.value,
-                fallback_plaintext=alice_input.hint_text,
-            )
+            try:
+                self.send_message(
+                    sender="alice",
+                    plaintext=alice_input.value,
+                    fallback_plaintext=alice_input.hint_text,
+                )
+            except ValueError as exc:
+                show_warning(str(exc))
+                return
             alice_input.value = ""
             refresh_view()
             page.update()
 
         def on_send_bob(e) -> None:
-            self.send_message(
-                sender="bob",
-                plaintext=bob_input.value,
-                fallback_plaintext=bob_input.hint_text,
-            )
+            try:
+                self.send_message(
+                    sender="bob",
+                    plaintext=bob_input.value,
+                    fallback_plaintext=bob_input.hint_text,
+                )
+            except ValueError as exc:
+                show_warning(str(exc))
+                return
             bob_input.value = ""
+            refresh_view()
+            page.update()
+
+        def on_receive_pending(recipient: str, pending_id: int) -> None:
+            self.receive_message(recipient, pending_id)
             refresh_view()
             page.update()
 
