@@ -8,6 +8,8 @@ def format_key(value) -> str:
         return value.hex()
     if isinstance(value, dict):
         return str(value)
+    if hasattr(value, "public") and hasattr(value, "private"):
+        return f"public: {value.public}\nprivate: {value.private}"
     if hasattr(value, "public"):
         return str(value.public)
     return str(value)

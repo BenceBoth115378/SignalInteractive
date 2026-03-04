@@ -18,12 +18,13 @@ def _build_party_panel(
     tooltips = get_tooltip_messages("double_ratchet")
 
     dhs_full = format_key(party.DHs)
+    dhs_public_full = party.DHs.public if party.DHs is not None else "None"
     dhr_full = format_key(party.DHr)
     rk_full = format_key(party.RK)
     cks_full = format_key(party.CKs)
     ckr_full = format_key(party.CKr)
 
-    dhs_value = last_n_chars(dhs_full, 8) if visible else "Hidden"
+    dhs_value = last_n_chars(dhs_public_full, 8) if visible else "Hidden"
     dhr_value = last_n_chars(dhr_full, 8) if visible else "Hidden"
     rk_value = last_n_chars(rk_full, 8) if visible else "Hidden"
     cks_value = last_n_chars(cks_full, 8) if visible else "Hidden"
@@ -41,7 +42,7 @@ def _build_party_panel(
             dhs_value,
             tooltips.get("DHs", ""),
             full_value=dhs_full if visible else None,
-            on_click=make_copy_handler(page, "DHs", dhs_full) if visible else None,
+            on_click=make_copy_handler(page, "DHs", dhs_public_full) if visible else None,
         ),
         build_tooltip_text(
             "DHr",
