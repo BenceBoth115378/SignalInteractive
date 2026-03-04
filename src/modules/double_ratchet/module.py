@@ -83,14 +83,35 @@ def _serialize_message(message: MessageState) -> dict:
     return {
         "sender": message.sender,
         "receiver": message.receiver,
+        "header": {
+            "dh": message.header.dh,
+            "pn": message.header.pn,
+            "n": message.header.n,
+        }
+        if message.header is not None
+        else None,
         "message_key": _encode_bytes(message.message_key),
         "cipher": _encode_bytes(message.cipher),
         "decrypted_by_bob": _encode_bytes(message.decrypted_by_bob),
         "decrypted_by_alice": _encode_bytes(message.decrypted_by_alice),
+        "plaintext": _encode_bytes(message.plaintext),
     }
 
 
 def _deserialize_message(data: dict) -> MessageState:
+    header_data = data.get("header")
+    header = None
+    if isinstance(header_data, dict):
+        dh = header_data.get("dh")
+        pn = header_data.get("pn")
+        n = header_data.get("n")
+        if isinstance(dh, str) and isinstance(pn, int) and isinstance(n, int):
+            header = Header(dh=dh, pn=pn, n=n)
+
+    plaintext = _decode_bytes(data.get("plaintext", b""))
+    if not plaintext:
+        plaintext = _decode_bytes(data.get("decrypted_by_alice", b"")) or _decode_bytes(data.get("decrypted_by_bob", b""))
+
     return MessageState(
         sender=data.get("sender", ""),
         receiver=data.get("receiver", ""),
@@ -98,6 +119,8 @@ def _deserialize_message(data: dict) -> MessageState:
         cipher=_decode_bytes(data.get("cipher", "")),
         decrypted_by_bob=_decode_bytes(data.get("decrypted_by_bob", "")),
         decrypted_by_alice=_decode_bytes(data.get("decrypted_by_alice", "")),
+        header=header,
+        plaintext=plaintext,
     )
 
 
@@ -127,6 +150,7 @@ class DoubleRatchetModule(BaseModule):
                         "n": pending["header"].n,
                     },
                     "cipher": _encode_bytes(pending["cipher"]),
+                    "plaintext": _encode_bytes(pending.get("plaintext", b"")),
                 }
                 for pending in self.pending_messages
             ],
@@ -178,6 +202,7 @@ class DoubleRatchetModule(BaseModule):
                     "receiver": receiver,
                     "header": Header(dh=header_dh, pn=header_pn, n=header_n),
                     "cipher": _decode_bytes(pending.get("cipher")),
+                    "plaintext": _decode_bytes(pending.get("plaintext", b"")),
                 }
             )
 
@@ -261,6 +286,8 @@ class DoubleRatchetModule(BaseModule):
                 cipher=cipher,
                 decrypted_by_bob=decrypted if recipient_name == "Bob" else b"",
                 decrypted_by_alice=decrypted if recipient_name == "Alice" else b"",
+                header=header,
+                plaintext=pending.get("plaintext", b"") or decrypted,
             )
         )
         self.pending_messages = [item for item in self.pending_messages if item["id"] != pending_id]
@@ -309,6 +336,7 @@ class DoubleRatchetModule(BaseModule):
                 "receiver": receiver_name,
                 "header": header,
                 "cipher": cipher,
+                "plaintext": plaintext_bytes,
             }
         )
         self._next_pending_id += 1

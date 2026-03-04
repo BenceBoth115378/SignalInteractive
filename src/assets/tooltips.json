@@ -8,6 +8,9 @@
     "Ns": "Number of messages sent in the current sending chain.",
     "Nr": "Number of messages received in the current receiving chain.",
     "PN": "Length of the previous sending chain before the last DH ratchet step.",
-    "MKSKIPPED": "Storage for skipped message keys used to decrypt out-of-order messages. Entries are indexed by remote DH key and message number."
+    "MKSKIPPED": "Storage for skipped message keys used to decrypt out-of-order messages. Entries are indexed by remote DH key and message number.",
+    "header_dh": "Header DH ratchet public key attached to this message. It identifies the sender ratchet step and is public metadata.",
+    "header_pn": "Header PN (previous chain length). It tells how many messages were sent in the sender's previous sending chain.",
+    "header_n": "Header message number N in the current sending chain. It is public metadata used for ordering and skipped-key handling."
   }
 }

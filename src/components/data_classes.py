@@ -91,3 +91,5 @@ class MessageState:
     cipher: bytes
     decrypted_by_bob: bytes = b""
     decrypted_by_alice: bytes = b""
+    header: Header | None = None
+    plaintext: bytes = b""

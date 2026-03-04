@@ -5,6 +5,10 @@ as defined in Signal's specification (Section 3.1).
 This module uses real cryptographic primitives for:
 - Diffie-Hellman (X25519)
 - AEAD (ChaCha20-Poly1305)
+
+Note:
+Most functions in this module were initially generated with GAI tools,
+then reviewed and adapted for this project.
 """
 
 
