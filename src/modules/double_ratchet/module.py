@@ -245,6 +245,13 @@ class DoubleRatchetModule(BaseModule):
         self._next_pending_id = 1
         initialize_session(self.session)
 
+    def _build_initializer_switch_warning(self, old_initializer: str, new_initializer: str) -> str:
+        return (
+            f"Initializer switched from {old_initializer} to {new_initializer}. "
+            "This simulation now assumes both parties (at least the sender) already know each other's "
+            "public DH key and share an initial secret."
+        )
+
     def _initializer_sent_count(self) -> int:
         initializer_name = self.session.initializer.name
         delivered_count = sum(
@@ -310,18 +317,28 @@ class DoubleRatchetModule(BaseModule):
         if not text_to_send:
             return None
 
+        initializer_before = self.session.initializer.name
+        initializer_switch_warning: str | None = None
+
         if not self.session.message_log and not self.pending_messages and sender_key == "bob":
             self._reset_session_with_initializer("bob")
+            initializer_after = self.session.initializer.name
+            if initializer_after != initializer_before:
+                initializer_switch_warning = self._build_initializer_switch_warning(initializer_before, initializer_after)
 
         sender_state = self._get_party(sender_key)
         sender_name = "Alice" if sender_key == "alice" else "Bob"
         receiver_name = "Bob" if sender_key == "alice" else "Alice"
 
         if sender_state.CKs is None:
-            if self._initializer_sent_count() > 1:
+            if self._initializer_sent_count() > 0:
                 raise ValueError("Cannot send yet. Receive at least one pending message first.")
 
+            initializer_before = self.session.initializer.name
             self._reset_session_with_initializer(sender_key)
+            initializer_after = self.session.initializer.name
+            if initializer_after != initializer_before:
+                initializer_switch_warning = self._build_initializer_switch_warning(initializer_before, initializer_after)
             sender_state = self._get_party(sender_key)
             sender_name = "Alice" if sender_key == "alice" else "Bob"
             receiver_name = "Bob" if sender_key == "alice" else "Alice"
@@ -365,6 +382,7 @@ class DoubleRatchetModule(BaseModule):
             "before_dh": before_dh,
             "before_cks": before_cks,
             "after_cks": sender_state.CKs,
+            "initializer_switch_warning": initializer_switch_warning,
         }
 
     def build(self, page, app_state):
@@ -380,7 +398,7 @@ class DoubleRatchetModule(BaseModule):
                 page.update()
 
             dialog = ft.AlertDialog(
-                modal=True,  # <-- This makes it block interaction
+                modal=True,
                 title=ft.Text("Warning"),
                 content=ft.Text(message),
                 actions=[
@@ -425,7 +443,10 @@ class DoubleRatchetModule(BaseModule):
             alice_input.value = ""
             refresh_view()
             page.update()
-            if step_visualization_checkbox.value and step_data is not None:
+            warning_message = step_data.get("initializer_switch_warning") if step_data is not None else None
+            if warning_message:
+                show_warning(warning_message)
+            if step_visualization_checkbox.value and step_data is not None and not warning_message:
                 show_step_visualization(step_data)
 
         def on_send_bob(e) -> None:
@@ -441,7 +462,10 @@ class DoubleRatchetModule(BaseModule):
             bob_input.value = ""
             refresh_view()
             page.update()
-            if step_visualization_checkbox.value and step_data is not None:
+            warning_message = step_data.get("initializer_switch_warning") if step_data is not None else None
+            if warning_message:
+                show_warning(warning_message)
+            if step_visualization_checkbox.value and step_data is not None and not warning_message:
                 show_step_visualization(step_data)
 
         def on_receive_pending(recipient: str, pending_id: int) -> None:
