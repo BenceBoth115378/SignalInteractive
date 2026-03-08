@@ -281,6 +281,7 @@ def build_visual(
     session: DoubleRatchetState,
     perspective: str,
     page: ft.Page,
+    step_visualization_checkbox: ft.Checkbox | None = None,
     alice_input: ft.TextField | None = None,
     bob_input: ft.TextField | None = None,
     on_send_alice=None,
@@ -326,9 +327,17 @@ def build_visual(
         padding=10,
     )
 
+    initializer_content = [initializer_panel]
+    if step_visualization_checkbox is not None:
+        initializer_content.insert(0, step_visualization_checkbox)
+
     return ft.Row(
         [
-            ft.Container(initializer_panel, expand=True, padding=10),
+            ft.Container(
+                ft.Column(initializer_content, spacing=10, tight=True),
+                expand=True,
+                padding=10,
+            ),
             ft.VerticalDivider(),
             ft.Container(timeline_container, height=400, expand=True, padding=10),
             ft.VerticalDivider(),

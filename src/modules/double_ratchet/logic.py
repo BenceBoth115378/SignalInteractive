@@ -50,10 +50,10 @@ def RatchetSendKey(state: PartyState) -> tuple[int, bytes]:
     return Ns, mk
 
 
-def RatchetEncrypt(state: PartyState, plaintext: bytes, AD: bytes) -> tuple[Header, bytes]:
+def RatchetEncrypt(state: PartyState, plaintext: bytes, AD: bytes) -> tuple[Header, bytes, bytes]:
     Ns, mk = RatchetSendKey(state)
     header = ext.HEADER(_require_dh_pair(state), state.PN, Ns)
-    return header, ext.ENCRYPT(mk, plaintext, ext.CONCAT(AD, header))
+    return header, ext.ENCRYPT(mk, plaintext, ext.CONCAT(AD, header)), mk
 
 
 def RatchetReceiveKey(state: PartyState, header: Header) -> bytes:

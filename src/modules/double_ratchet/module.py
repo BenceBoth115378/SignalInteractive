@@ -9,6 +9,7 @@ from modules.double_ratchet.logic import (
     RatchetEncrypt,
     initialize_session,
 )
+from modules.double_ratchet.step_visualization import show_step_visualization_dialog
 from modules.double_ratchet.view import build_visual
 from components.data_classes import PartyState
 
@@ -298,16 +299,16 @@ class DoubleRatchetModule(BaseModule):
         sender: str = "alice",
         plaintext: str | None = None,
         fallback_plaintext: str | None = None,
-    ) -> None:
+    ) -> dict[str, Any] | None:
         sender_key = sender.lower()
         if sender_key not in {"alice", "bob"}:
-            return
+            return None
 
         text_to_send = (plaintext or "").strip()
         if not text_to_send:
             text_to_send = (fallback_plaintext or "").strip()
         if not text_to_send:
-            return
+            return None
 
         if not self.session.message_log and not self.pending_messages and sender_key == "bob":
             self._reset_session_with_initializer("bob")
@@ -328,10 +329,16 @@ class DoubleRatchetModule(BaseModule):
         associated_data = b""
         plaintext_bytes = text_to_send.encode("utf-8")
 
-        header, cipher = RatchetEncrypt(sender_state, plaintext_bytes, associated_data)
+        before_ns = sender_state.Ns
+        before_pn = sender_state.PN
+        before_dh = sender_state.DHs.public if sender_state.DHs is not None else ""
+        before_cks = sender_state.CKs
+
+        header, cipher, mk = RatchetEncrypt(sender_state, plaintext_bytes, associated_data)
+        pending_id = self._next_pending_id
         self.pending_messages.append(
             {
-                "id": self._next_pending_id,
+                "id": pending_id,
                 "sender": sender_name,
                 "receiver": receiver_name,
                 "header": header,
@@ -341,8 +348,28 @@ class DoubleRatchetModule(BaseModule):
         )
         self._next_pending_id += 1
 
+        return {
+            "sender": sender_name,
+            "receiver": receiver_name,
+            "plaintext": plaintext_bytes,
+            "header": header,
+            "cipher": cipher,
+            "mk": mk,
+            "pending_id": pending_id,
+            "before_ns": before_ns,
+            "after_ns": sender_state.Ns,
+            "before_pn": before_pn,
+            "header_n": header.n,
+            "header_pn": header.pn,
+            "header_dh": header.dh,
+            "before_dh": before_dh,
+            "before_cks": before_cks,
+            "after_cks": sender_state.CKs,
+        }
+
     def build(self, page, app_state):
         message_count = ft.Text(f"Messages exchanged: {len(self.session.message_log)}")
+        step_visualization_checkbox = ft.Checkbox(label="Step-by-step vizualization", value=False)
         alice_input = ft.TextField(dense=True, expand=True)
         bob_input = ft.TextField(dense=True, expand=True)
         visual_container = ft.Container(expand=True)
@@ -366,6 +393,9 @@ class DoubleRatchetModule(BaseModule):
             dialog.open = True
             page.update()
 
+        def show_step_visualization(step_data: dict[str, Any]) -> None:
+            show_step_visualization_dialog(page, step_data)
+
         def refresh_view() -> None:
             message_count.value = f"Messages exchanged: {len(self.session.message_log)}"
             alice_input.hint_text = self._build_hint_message("alice")
@@ -374,17 +404,18 @@ class DoubleRatchetModule(BaseModule):
                 self.session,
                 app_state.perspective,
                 page,
-                alice_input,
-                bob_input,
-                on_send_alice,
-                on_send_bob,
+                step_visualization_checkbox=step_visualization_checkbox,
+                alice_input=alice_input,
+                bob_input=bob_input,
+                on_send_alice=on_send_alice,
+                on_send_bob=on_send_bob,
                 pending_messages=self.pending_messages,
                 on_receive_pending=on_receive_pending,
             )
 
         def on_send_alice(e) -> None:
             try:
-                self.send_message(
+                step_data = self.send_message(
                     sender="alice",
                     plaintext=alice_input.value,
                     fallback_plaintext=alice_input.hint_text,
@@ -395,10 +426,12 @@ class DoubleRatchetModule(BaseModule):
             alice_input.value = ""
             refresh_view()
             page.update()
+            if step_visualization_checkbox.value and step_data is not None:
+                show_step_visualization(step_data)
 
         def on_send_bob(e) -> None:
             try:
-                self.send_message(
+                step_data = self.send_message(
                     sender="bob",
                     plaintext=bob_input.value,
                     fallback_plaintext=bob_input.hint_text,
@@ -409,6 +442,8 @@ class DoubleRatchetModule(BaseModule):
             bob_input.value = ""
             refresh_view()
             page.update()
+            if step_visualization_checkbox.value and step_data is not None:
+                show_step_visualization(step_data)
 
         def on_receive_pending(recipient: str, pending_id: int) -> None:
             self.receive_message(recipient, pending_id)
