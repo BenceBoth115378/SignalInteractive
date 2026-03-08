@@ -1,6 +1,7 @@
 from typing import Any
 
 import flet as ft
+from modules.tooltip_helpers import get_tooltip_messages
 
 
 def _preview_value(value: Any, limit: int = 28) -> str:
@@ -45,6 +46,8 @@ def _tooltip_with_full_value(message: str | None, full_value: Any = None) -> str
 
 
 def show_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> None:
+    tooltips = get_tooltip_messages("double_ratchet")
+
     resize_event_name = "on_resized" if hasattr(page, "on_resized") else "on_resize"
     previous_resize_handler = getattr(page, resize_event_name, None)
 
@@ -216,7 +219,7 @@ def show_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> 
                         "Plaintext (string)",
                         plaintext,
                         width=260,
-                        tooltip="User message in plaintext before encryption.",
+                        tooltip=tooltips.get("step_viz_plaintext", ""),
                     ),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
@@ -224,12 +227,12 @@ def show_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> 
             party_state_panel(
                 "Sender party state (before send)",
                 [
-                    ("DHs", before_dh, "Current sending Diffie-Hellman public key.", before_dh_full),
-                    ("PN", str(before_pn), "Previous sending chain length.", None),
-                    ("Ns", str(before_ns), "Current sending message number before this send.", None),
-                    ("CKs", before_cks, "Current sending chain key before ratchet step.", before_cks_full),
+                    ("DHs", before_dh, tooltips.get("step_viz_sender_before_dhs", ""), before_dh_full),
+                    ("PN", str(before_pn), tooltips.get("step_viz_sender_before_pn", ""), None),
+                    ("Ns", str(before_ns), tooltips.get("step_viz_sender_before_ns", ""), None),
+                    ("CKs", before_cks, tooltips.get("step_viz_sender_before_cks", ""), before_cks_full),
                 ],
-                tooltip="Sender state snapshot before processing the message.",
+                tooltip=tooltips.get("step_viz_sender_before_panel", ""),
             ),
         ],
         spacing=6,
@@ -239,14 +242,14 @@ def show_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> 
     step2_data_flow = ft.Column(
         controls=[
             ft.Text("2) Send chain step", weight="bold"),
-            flow_node("CKs", before_cks, tooltip="Sending chain key for symmetric ratchet.", full_value=before_cks_full),
+            flow_node("CKs", before_cks, tooltip=tooltips.get("step_viz_send_chain_cks", ""), full_value=before_cks_full),
             ft.Text("↓", size=24),
-            flow_node("KDF_CK", circle=True, tooltip="Symmetric-key KDF: derives next CKs and message key mk."),
+            flow_node("KDF_CK", circle=True, tooltip=tooltips.get("step_viz_kdf_ck", "")),
             ft.Text("↓", size=24),
             ft.Row(
                 controls=[
-                    flow_node("new CKs", after_cks, tooltip="Next sending chain key stored back into state.", full_value=after_cks_full),
-                    flow_node("message key", mk, tooltip="One-time message key used for encrypting this message.", full_value=mk_full),
+                    flow_node("new CKs", after_cks, tooltip=tooltips.get("step_viz_new_cks", ""), full_value=after_cks_full),
+                    flow_node("message key", mk, tooltip=tooltips.get("step_viz_message_key", ""), full_value=mk_full),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 vertical_alignment=ft.CrossAxisAlignment.START,
@@ -260,7 +263,7 @@ def show_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> 
                 f"CKs replaced with new CKs\nNs: {before_ns} -> {after_ns}",
                 width=260,
                 height=105,
-                tooltip="Sender state mutation after symmetric ratchet send step.",
+                tooltip=tooltips.get("step_viz_state_update", ""),
             ),
         ],
         spacing=6,
@@ -272,22 +275,21 @@ def show_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> 
             ft.Text("3) Encrypt plaintext", weight="bold"),
             ft.Row(
                 controls=[
-                    flow_node("mk", mk, tooltip="Derived message key from step 2.", full_value=mk_full),
-                    flow_node("Plaintext", plaintext, tooltip="Same plaintext that will be encrypted."),
+                    flow_node("mk", mk, tooltip=tooltips.get("step_viz_encrypt_mk", ""), full_value=mk_full),
+                    flow_node("Plaintext", plaintext, tooltip=tooltips.get("step_viz_encrypt_plaintext", "")),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 spacing=24,
             ),
             flow_node(
                 "AD||header",
-                "one node",
                 width=220,
-                tooltip="Concatenated associated data and header fed into ENCRYPT.",
+                tooltip=tooltips.get("step_viz_ad_header", ""),
             ),
             ft.Text("↓", size=24),
-            flow_node("ENCRYPT", "function", circle=True, tooltip="Authenticated encryption using mk and AD||header."),
+            flow_node("ENCRYPT", circle=True, tooltip=tooltips.get("step_viz_encrypt_fn", "")),
             ft.Text("↓", size=24),
-            flow_node("Ciphertext", cipher, tooltip="Ciphertext produced by ENCRYPT.", full_value=cipher_full),
+            flow_node("Ciphertext", cipher, tooltip=tooltips.get("step_viz_ciphertext", ""), full_value=cipher_full),
         ],
         spacing=6,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -298,27 +300,27 @@ def show_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> 
             ft.Text("4) Create header and update state", weight="bold"),
             ft.Row(
                 controls=[
-                    flow_node("DHs", before_dh, tooltip="Sender DH public key for header construction.", full_value=before_dh_full),
-                    flow_node("PN", str(before_pn), tooltip="Previous sending chain length placed in header."),
-                    flow_node("N", str(before_ns), tooltip="Current message number placed in header."),
+                    flow_node("DHs", before_dh, tooltip=tooltips.get("step_viz_header_dhs", ""), full_value=before_dh_full),
+                    flow_node("PN", str(before_pn), tooltip=tooltips.get("step_viz_header_pn", "")),
+                    flow_node("N", str(before_ns), tooltip=tooltips.get("step_viz_header_n", "")),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 spacing=16,
             ),
             ft.Text("↓", size=24),
-            flow_node("HEADER", "function", circle=True, tooltip="Builds the protocol header from DHs, PN and N."),
+            flow_node("HEADER", circle=True, tooltip=tooltips.get("step_viz_header_fn", "")),
             ft.Text("↓", size=24),
-            flow_node("Header", header_preview, width=360, tooltip="Header attached to the outgoing ciphertext.", full_value=f"dh={_to_text(header_dh_full)}, pn={step_data.get('header_pn', '?')}, n={step_data.get('header_n', '?')}"),
+            flow_node("Header", header_preview, width=360, tooltip=tooltips.get("step_viz_header_output", ""), full_value=f"dh={_to_text(header_dh_full)}, pn={step_data.get('header_pn', '?')}, n={step_data.get('header_n', '?')}"),
             ft.Container(height=8),
             ft.Divider(height=1),
             ft.Container(height=8),
             party_state_panel(
                 "Party state after send",
                 [
-                    ("CKs", after_cks, "Updated sending chain key after this send.", after_cks_full),
-                    ("Ns", str(after_ns), "Incremented sending message counter.", None),
+                    ("CKs", after_cks, tooltips.get("step_viz_sender_after_cks", ""), after_cks_full),
+                    ("Ns", str(after_ns), tooltips.get("step_viz_sender_after_ns", ""), None),
                 ],
-                tooltip="Sender state snapshot after send processing.",
+                tooltip=tooltips.get("step_viz_sender_after_panel", ""),
             ),
         ],
         spacing=6,
@@ -331,25 +333,25 @@ def show_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> 
             party_state_panel(
                 "Party state before send",
                 [
-                    ("DHs", before_dh, "Sender DH key before sending.", before_dh_full),
-                    ("PN", str(before_pn), "Previous chain length before sending.", None),
-                    ("Ns", str(before_ns), "Message counter before sending.", None),
-                    ("CKs", before_cks, "Sending chain key before sending.", before_cks_full),
+                    ("DHs", before_dh, tooltips.get("step_viz_sent_before_dhs", ""), before_dh_full),
+                    ("PN", str(before_pn), tooltips.get("step_viz_sent_before_pn", ""), None),
+                    ("Ns", str(before_ns), tooltips.get("step_viz_sent_before_ns", ""), None),
+                    ("CKs", before_cks, tooltips.get("step_viz_sent_before_cks", ""), before_cks_full),
                 ],
             ),
             flow_node(
                 "Pending queue",
                 f"ID: {step_data.get('pending_id', '?')}\n{sender} -> {receiver}",
                 width=280,
-                tooltip="Message is queued and waiting to be received by the recipient.",
+                tooltip=tooltips.get("step_viz_pending_queue", ""),
             ),
             party_state_panel(
                 "Party state after send",
                 [
-                    ("DHs", before_dh, "Sender DH key after sending (unchanged here).", before_dh_full),
-                    ("PN", str(before_pn), "Previous chain length after sending.", None),
-                    ("Ns", str(after_ns), "Message counter after sending.", None),
-                    ("CKs", after_cks, "Sending chain key after sending.", after_cks_full),
+                    ("DHs", before_dh, tooltips.get("step_viz_sent_after_dhs", ""), before_dh_full),
+                    ("PN", str(before_pn), tooltips.get("step_viz_sent_after_pn", ""), None),
+                    ("Ns", str(after_ns), tooltips.get("step_viz_sent_after_ns", ""), None),
+                    ("CKs", after_cks, tooltips.get("step_viz_sent_after_cks", ""), after_cks_full),
                 ],
             ),
         ],
