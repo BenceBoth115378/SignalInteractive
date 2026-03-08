@@ -9,7 +9,10 @@ from modules.double_ratchet.logic import (
     RatchetEncrypt,
     initialize_session,
 )
-from modules.double_ratchet.step_visualization import show_sending_step_visualization_dialog
+from modules.double_ratchet.step_visualization import (
+    show_receiving_step_visualization_dialog,
+    show_sending_step_visualization_dialog,
+)
 from modules.double_ratchet.view import build_visual
 from components.data_classes import PartyState
 
@@ -266,7 +269,7 @@ class DoubleRatchetModule(BaseModule):
         )
         return delivered_count + pending_count
 
-    def receive_message(self, recipient: str, pending_id: int) -> None:
+    def receive_message(self, recipient: str, pending_id: int) -> dict[str, Any] | None:
         recipient_name = "Alice" if recipient.lower() == "alice" else "Bob"
 
         pending = next(
@@ -278,11 +281,33 @@ class DoubleRatchetModule(BaseModule):
             None,
         )
         if pending is None:
-            return
+            return None
 
         receiver_state = self._get_party(recipient_name)
+        before_nr = receiver_state.Nr
+        before_ckr = receiver_state.CKr
+        before_rk = receiver_state.RK
+        before_dhr = receiver_state.DHr
+        before_dhs = receiver_state.DHs.public if receiver_state.DHs is not None else ""
+        before_cks = receiver_state.CKs
+        before_ns = receiver_state.Ns
+        before_pn = receiver_state.PN
         header = pending["header"]
         cipher = pending["cipher"]
+        skipped_key_hit = (header.dh, header.n) in receiver_state.MKSKIPPED
+        dh_ratchet_needed = (not skipped_key_hit) and (header.dh != before_dhr)
+        if skipped_key_hit:
+            fast_forward_count = 0
+            fast_forward_from_nr = before_nr
+            fast_forward_to_nr = before_nr
+        elif dh_ratchet_needed:
+            fast_forward_count = max(0, header.n)
+            fast_forward_from_nr = 0
+            fast_forward_to_nr = header.n
+        else:
+            fast_forward_count = max(0, header.n - before_nr)
+            fast_forward_from_nr = before_nr
+            fast_forward_to_nr = before_nr + fast_forward_count
         associated_data = b""
         decrypted = RatchetDecrypt(receiver_state, header, cipher, associated_data)
 
@@ -299,6 +324,39 @@ class DoubleRatchetModule(BaseModule):
             )
         )
         self.pending_messages = [item for item in self.pending_messages if item["id"] != pending_id]
+
+        return {
+            "sender": pending["sender"],
+            "receiver": pending["receiver"],
+            "pending_id": pending_id,
+            "header_dh": header.dh,
+            "header_pn": header.pn,
+            "header_n": header.n,
+            "cipher": cipher,
+            "decrypted": decrypted,
+            "skipped_key_hit": skipped_key_hit,
+            "dh_ratchet_needed": dh_ratchet_needed,
+            "fast_forward_count": fast_forward_count,
+            "fast_forward_from_nr": fast_forward_from_nr,
+            "fast_forward_to_nr": fast_forward_to_nr,
+            "plaintext": pending.get("plaintext", b"") or decrypted,
+            "before_nr": before_nr,
+            "after_nr": receiver_state.Nr,
+            "before_ckr": before_ckr,
+            "after_ckr": receiver_state.CKr,
+            "before_rk": before_rk,
+            "after_rk": receiver_state.RK,
+            "before_dhr": before_dhr,
+            "after_dhr": receiver_state.DHr,
+            "before_dhs": before_dhs,
+            "after_dhs": receiver_state.DHs.public if receiver_state.DHs is not None else "",
+            "before_cks": before_cks,
+            "after_cks": receiver_state.CKs,
+            "before_ns": before_ns,
+            "after_ns": receiver_state.Ns,
+            "before_pn": before_pn,
+            "after_pn": receiver_state.PN,
+        }
 
     def send_message(
         self,
@@ -387,7 +445,8 @@ class DoubleRatchetModule(BaseModule):
 
     def build(self, page, app_state):
         message_count = ft.Text(f"Messages exchanged: {len(self.session.message_log)}")
-        step_visualization_checkbox = ft.Checkbox(label="Show sending ratchet step visualization", value=False)
+        send_step_visualization_checkbox = ft.Checkbox(label="Show sending ratchet step visualization", value=False)
+        receive_step_visualization_checkbox = ft.Checkbox(label="Show receiving ratchet step visualization", value=False)
         alice_input = ft.TextField(dense=True, expand=True)
         bob_input = ft.TextField(dense=True, expand=True)
         visual_container = ft.Container(expand=True)
@@ -413,6 +472,9 @@ class DoubleRatchetModule(BaseModule):
 
         def show_step_visualization(step_data: dict[str, Any]) -> None:
             show_sending_step_visualization_dialog(page, step_data)
+
+        def show_receive_step_visualization(step_data: dict[str, Any]) -> None:
+            show_receiving_step_visualization_dialog(page, step_data)
 
         def refresh_view() -> None:
             message_count.value = f"Messages exchanged: {len(self.session.message_log)}"
@@ -446,7 +508,7 @@ class DoubleRatchetModule(BaseModule):
             warning_message = step_data.get("initializer_switch_warning") if step_data is not None else None
             if warning_message:
                 show_warning(warning_message)
-            if step_visualization_checkbox.value and step_data is not None and not warning_message:
+            if send_step_visualization_checkbox.value and step_data is not None and not warning_message:
                 show_step_visualization(step_data)
 
         def on_send_bob(e) -> None:
@@ -465,13 +527,15 @@ class DoubleRatchetModule(BaseModule):
             warning_message = step_data.get("initializer_switch_warning") if step_data is not None else None
             if warning_message:
                 show_warning(warning_message)
-            if step_visualization_checkbox.value and step_data is not None and not warning_message:
+            if send_step_visualization_checkbox.value and step_data is not None and not warning_message:
                 show_step_visualization(step_data)
 
         def on_receive_pending(recipient: str, pending_id: int) -> None:
-            self.receive_message(recipient, pending_id)
+            step_data = self.receive_message(recipient, pending_id)
             refresh_view()
             page.update()
+            if receive_step_visualization_checkbox.value and step_data is not None:
+                show_receive_step_visualization(step_data)
 
         refresh_view()
 
@@ -480,7 +544,13 @@ class DoubleRatchetModule(BaseModule):
                 ft.Row(
                     controls=[
                         ft.Text("Double Ratchet Simulation", size=22, weight="bold"),
-                        step_visualization_checkbox,
+                        ft.Row(
+                            controls=[
+                                send_step_visualization_checkbox,
+                                receive_step_visualization_checkbox,
+                            ],
+                            spacing=16,
+                        ),
                     ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,

@@ -176,7 +176,7 @@ def build_timeline(
         spacing=6,
     )
 
-    for i, msg in enumerate(session.message_log):
+    for i, msg in reversed(list(enumerate(session.message_log))):
         sender = msg.sender
         receiver = msg.receiver
 
@@ -222,7 +222,8 @@ def build_timeline(
         )
 
     if pending_messages is not None:
-        for i, pending in enumerate(pending_messages, start=len(session.message_log)):
+        pending_entries = list(enumerate(pending_messages, start=len(session.message_log)))
+        for i, pending in reversed(pending_entries):
             pending_id = pending.get("id")
             sender = pending.get("sender", "?")
             receiver = pending.get("receiver", "?")

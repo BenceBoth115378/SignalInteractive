@@ -123,10 +123,13 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: dict[str, A
         height: int = 90,
         tooltip: str | None = None,
         full_value: Any = None,
+        bgcolor: str | None = None,
+        text_color: str | None = None,
+        border_color: str | None = None,
     ) -> ft.Control:
-        controls = [ft.Text(label, weight="bold", text_align=ft.TextAlign.CENTER)]
+        controls = [ft.Text(label, weight="bold", text_align=ft.TextAlign.CENTER, color=text_color)]
         if value:
-            controls.append(ft.Text(value, text_align=ft.TextAlign.CENTER))
+            controls.append(ft.Text(value, text_align=ft.TextAlign.CENTER, color=text_color))
 
         node = ft.Container(
             content=ft.Column(
@@ -140,7 +143,8 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: dict[str, A
             width=width,
             height=height,
             padding=10,
-            border=ft.Border.all(),
+            bgcolor=bgcolor,
+            border=ft.Border.all(color=border_color) if border_color is not None else ft.Border.all(),
             border_radius=45 if circle else 8,
         )
         return with_tooltip(node, tooltip, full_value)
@@ -468,6 +472,604 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: dict[str, A
     dialog = ft.AlertDialog(
         modal=True,
         title=ft.Text("Step-by-step vizualization"),
+        content=dialog_content,
+        actions=[previous_button, next_button, ft.TextButton("Close", on_click=close_dialog)],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    apply_responsive_dialog_size()
+    setattr(page, resize_event_name, on_page_resized)
+    render_current_step()
+    page.overlay.append(dialog)
+    dialog.open = True
+    page.update()
+
+
+def show_receiving_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> None:
+    tooltips = get_tooltip_messages("double_ratchet")
+
+    resize_event_name = "on_resized" if hasattr(page, "on_resized") else "on_resize"
+    previous_resize_handler = getattr(page, resize_event_name, None)
+
+    def _safe_dimension(value: Any, fallback: int) -> int:
+        if isinstance(value, (int, float)) and value > 0:
+            return int(value)
+        return fallback
+
+    def _page_size() -> tuple[int, int]:
+        width = getattr(page, "width", None)
+        height = getattr(page, "height", None)
+        window = getattr(page, "window", None)
+
+        if width is None and window is not None:
+            width = getattr(window, "width", None)
+        if height is None and window is not None:
+            height = getattr(window, "height", None)
+
+        return _safe_dimension(width, 1100), _safe_dimension(height, 760)
+
+    def apply_responsive_dialog_size() -> None:
+        page_width, page_height = _page_size()
+        content_width = max(620, min(980, int(page_width * 0.82)))
+        content_height = max(360, min(760, int(page_height * 0.72)))
+
+        dialog_content.width = content_width
+        dialog_content.height = content_height
+        step_container.width = max(520, content_width - 80)
+
+    def on_page_resized(e) -> None:
+        apply_responsive_dialog_size()
+        if callable(previous_resize_handler):
+            previous_resize_handler(e)
+        if dialog.open:
+            page.update()
+
+    def close_dialog(e):
+        dialog.open = False
+        if getattr(page, resize_event_name, None) == on_page_resized:
+            setattr(page, resize_event_name, previous_resize_handler)
+        page.update()
+
+    def on_previous(e):
+        if current_step["index"] <= 0:
+            return
+        current_step["index"] -= 1
+        render_current_step()
+        page.update()
+
+    def on_next(e):
+        if current_step["index"] >= len(steps) - 1:
+            close_dialog(e)
+            return
+        current_step["index"] += 1
+        render_current_step()
+        page.update()
+
+    def with_tooltip(control: ft.Control, message: str | None, full_value: Any = None) -> ft.Control:
+        tooltip_message = _tooltip_with_full_value(message, full_value)
+        if tooltip_message:
+            return ft.Container(
+                content=control,
+                tooltip=ft.Tooltip(message=tooltip_message, prefer_below=False),
+                padding=0,
+            )
+        return control
+
+    def flow_node(
+        label: str,
+        value: str | None = None,
+        circle: bool = False,
+        width: int = 170,
+        height: int = 90,
+        tooltip: str | None = None,
+        full_value: Any = None,
+        bgcolor: str | None = None,
+        text_color: str | None = None,
+        border_color: str | None = None,
+    ) -> ft.Control:
+        controls = [ft.Text(label, weight="bold", text_align=ft.TextAlign.CENTER, color=text_color)]
+        if value:
+            controls.append(ft.Text(value, text_align=ft.TextAlign.CENTER, color=text_color))
+
+        node = ft.Container(
+            content=ft.Column(
+                controls=controls,
+                spacing=4,
+                tight=True,
+                expand=True,
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            width=width,
+            height=height,
+            padding=10,
+            bgcolor=bgcolor,
+            border=ft.Border.all(color=border_color) if border_color is not None else ft.Border.all(),
+            border_radius=45 if circle else 8,
+        )
+        return with_tooltip(node, tooltip, full_value)
+
+    def state_row(
+        label: str,
+        value: str,
+        tooltip: str | None = None,
+        full_value: Any = None,
+        highlight: bool = False,
+    ) -> ft.Control:
+        row = ft.Row(
+            controls=[
+                ft.Text(
+                    f"{label}:",
+                    weight="bold",
+                    color=ft.Colors.ON_PRIMARY_CONTAINER if highlight else None,
+                ),
+                ft.Text(
+                    value,
+                    weight=ft.FontWeight.W_600 if highlight else None,
+                    color=ft.Colors.ON_PRIMARY_CONTAINER if highlight else None,
+                ),
+            ],
+            spacing=8,
+            wrap=True,
+        )
+        row_control: ft.Control = row
+        if highlight:
+            row_control = ft.Container(
+                content=row,
+                padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                border_radius=6,
+                bgcolor=ft.Colors.PRIMARY_CONTAINER,
+            )
+        return with_tooltip(row_control, tooltip, full_value)
+
+    def party_state_panel(
+        title: str,
+        rows: list[tuple[str, str, str | None, Any]],
+        tooltip: str | None = None,
+        highlight_labels: set[str] | None = None,
+    ) -> ft.Control:
+        highlighted = highlight_labels or set()
+        panel = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text(title, size=16, weight="bold"),
+                    *[
+                        state_row(
+                            label,
+                            value,
+                            row_tooltip,
+                            full_value,
+                            highlight=label in highlighted,
+                        )
+                        for label, value, row_tooltip, full_value in rows
+                    ],
+                ],
+                spacing=4,
+                tight=True,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+            ),
+            width=420,
+            padding=10,
+            border=ft.Border.all(),
+            border_radius=8,
+        )
+        return with_tooltip(panel, tooltip)
+
+    sender = step_data.get("sender", "?")
+    receiver = step_data.get("receiver", "?")
+    decrypted_full = step_data.get("decrypted", step_data.get("plaintext", b""))
+    cipher_full = step_data.get("cipher", b"")
+    header_dh_full = step_data.get("header_dh", "")
+
+    if isinstance(decrypted_full, bytes):
+        try:
+            decrypted_string = decrypted_full.decode("utf-8")
+        except UnicodeDecodeError:
+            decrypted_string = decrypted_full.hex()
+    else:
+        decrypted_string = str(decrypted_full)
+
+    plaintext = _preview_value(decrypted_string, limit=40)
+    cipher = _last_n_chars(cipher_full, 8)
+    header_preview = (
+        f"dh={_last_n_chars(header_dh_full, 8)}, "
+        f"pn={step_data.get('header_pn', '?')}, n={step_data.get('header_n', '?')}"
+    )
+
+    before_ckr_full = step_data.get("before_ckr")
+    after_ckr_full = step_data.get("after_ckr")
+    before_rk_full = step_data.get("before_rk")
+    after_rk_full = step_data.get("after_rk")
+    before_dhr_full = step_data.get("before_dhr", "")
+    after_dhr_full = step_data.get("after_dhr", "")
+    before_dhs_full = step_data.get("before_dhs", "")
+    after_dhs_full = step_data.get("after_dhs", "")
+    before_cks_full = step_data.get("before_cks")
+    after_cks_full = step_data.get("after_cks")
+    before_nr = step_data.get("before_nr", "?")
+    after_nr = step_data.get("after_nr", "?")
+    before_ns = step_data.get("before_ns", "?")
+    after_ns = step_data.get("after_ns", "?")
+    before_pn = step_data.get("before_pn", "?")
+    after_pn = step_data.get("after_pn", "?")
+    skipped_key_hit = bool(step_data.get("skipped_key_hit", False))
+    dh_ratchet_needed = bool(step_data.get("dh_ratchet_needed", False))
+    fast_forward_count = int(step_data.get("fast_forward_count", 0) or 0)
+    fast_forward_from_nr = step_data.get("fast_forward_from_nr", before_nr)
+    fast_forward_to_nr = step_data.get("fast_forward_to_nr", before_nr)
+
+    before_ckr = _last_n_chars(before_ckr_full, 8)
+    after_ckr = _last_n_chars(after_ckr_full, 8)
+    before_rk = _last_n_chars(before_rk_full, 8)
+    after_rk = _last_n_chars(after_rk_full, 8)
+    before_dhr = _last_n_chars(before_dhr_full, 8)
+    after_dhr = _last_n_chars(after_dhr_full, 8)
+    before_dhs = _last_n_chars(before_dhs_full, 8)
+    after_dhs = _last_n_chars(after_dhs_full, 8)
+    before_cks = _last_n_chars(before_cks_full, 8)
+    after_cks = _last_n_chars(after_cks_full, 8)
+
+    step1_data_flow = ft.Column(
+        controls=[
+            ft.Text("1) Incoming message and receiver state", weight="bold"),
+            ft.Row(
+                controls=[
+                    flow_node(
+                        "Header",
+                        header_preview,
+                        width=360,
+                        tooltip=tooltips.get("step_viz_receive_header", ""),
+                        full_value=f"dh={_to_text(header_dh_full)}, pn={step_data.get('header_pn', '?')}, n={step_data.get('header_n', '?')}",
+                    ),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+            ),
+            flow_node(
+                "Ciphertext",
+                cipher,
+                width=260,
+                tooltip=tooltips.get("step_viz_receive_ciphertext", ""),
+                full_value=cipher_full,
+            ),
+            party_state_panel(
+                "Receiver state before receive",
+                [
+                    ("DHr", before_dhr, tooltips.get("step_viz_receive_before_dhr", ""), before_dhr_full),
+                    ("RK", before_rk, tooltips.get("step_viz_receive_before_rk", ""), before_rk_full),
+                    ("CKr", before_ckr, tooltips.get("step_viz_receive_before_ckr", ""), before_ckr_full),
+                    ("Nr", str(before_nr), tooltips.get("step_viz_receive_before_nr", ""), None),
+                ],
+                tooltip=tooltips.get("step_viz_receive_before_panel", ""),
+            ),
+        ],
+        spacing=6,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+
+    step2_controls: list[ft.Control] = [
+        ft.Text("2) Skipped-message key check", weight="bold"),
+        flow_node(
+            "Lookup key",
+            f"(dh, n)=({_last_n_chars(header_dh_full, 8)}, {step_data.get('header_n', '?')})",
+            width=300,
+            tooltip=tooltips.get("step_viz_receive_skipped_lookup", ""),
+            full_value=f"dh={_to_text(header_dh_full)}, n={step_data.get('header_n', '?')}",
+        ),
+        ft.Text("↓", size=24),
+        flow_node(
+            "MKSKIPPED check",
+            "HIT" if skipped_key_hit else "MISS",
+            width=220,
+            tooltip=tooltips.get("step_viz_receive_skipped_check", ""),
+            bgcolor=ft.Colors.TERTIARY_CONTAINER if skipped_key_hit else ft.Colors.SECONDARY_CONTAINER,
+            text_color=ft.Colors.ON_TERTIARY_CONTAINER if skipped_key_hit else ft.Colors.ON_SECONDARY_CONTAINER,
+            border_color=ft.Colors.OUTLINE,
+        ),
+        ft.Text("↓", size=24),
+        flow_node(
+            "Path",
+            "Use stored key" if skipped_key_hit else "Continue receive ratchet",
+            width=300,
+            tooltip=tooltips.get("step_viz_receive_skipped_path", ""),
+        ),
+    ]
+
+    if not skipped_key_hit and fast_forward_count > 0:
+        step2_controls.extend(
+            [
+                ft.Text("↓", size=24),
+                flow_node(
+                    "Fast-forward receive chain",
+                    f"{fast_forward_count} step(s)\nNr: {fast_forward_from_nr} -> {fast_forward_to_nr}",
+                    width=320,
+                    tooltip=tooltips.get("step_viz_receive_fast_forward", ""),
+                    full_value=(
+                        f"Skipped messages before target n={step_data.get('header_n', '?')}\n"
+                        f"Advanced Nr from {fast_forward_from_nr} to {fast_forward_to_nr}."
+                    ),
+                    bgcolor=ft.Colors.PRIMARY_CONTAINER,
+                    text_color=ft.Colors.ON_PRIMARY_CONTAINER,
+                    border_color=ft.Colors.OUTLINE,
+                ),
+            ]
+        )
+
+    step2_data_flow = ft.Column(
+        controls=step2_controls,
+        spacing=6,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+
+    step3_data_flow = ft.Column(
+        controls=[
+            ft.Text("3) Header processing", weight="bold"),
+            flow_node("Header.dh", _last_n_chars(header_dh_full, 8), tooltip=tooltips.get("step_viz_receive_header_dh", ""), full_value=header_dh_full),
+            ft.Text("↓", size=24),
+            flow_node("Compare with DHr", f"DHr: {before_dhr}", circle=True, tooltip=tooltips.get("step_viz_receive_compare_dh", ""), full_value=before_dhr_full),
+            ft.Text("↓", size=24),
+            flow_node(
+                "Ratchet decision",
+                "Skipped-hit path" if skipped_key_hit else ("DH ratchet needed" if dh_ratchet_needed else "No DH ratchet"),
+                width=250,
+                tooltip=tooltips.get("step_viz_receive_ratchet_decision", ""),
+                bgcolor=(
+                    ft.Colors.SECONDARY_CONTAINER
+                    if skipped_key_hit
+                    else (ft.Colors.ERROR_CONTAINER if dh_ratchet_needed else ft.Colors.TERTIARY_CONTAINER)
+                ),
+                text_color=(
+                    ft.Colors.ON_SECONDARY_CONTAINER
+                    if skipped_key_hit
+                    else (ft.Colors.ON_ERROR_CONTAINER if dh_ratchet_needed else ft.Colors.ON_TERTIARY_CONTAINER)
+                ),
+                border_color=ft.Colors.OUTLINE,
+            ),
+        ],
+        spacing=6,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+
+    step4_data_flow = ft.Column(
+        controls=[
+            ft.Text("4) Receive chain step", weight="bold"),
+            flow_node("CKr", before_ckr, tooltip=tooltips.get("step_viz_receive_ckr", ""), full_value=before_ckr_full),
+            ft.Text("↓", size=24),
+            flow_node("KDF_CK", circle=True, tooltip=tooltips.get("step_viz_receive_kdf_ck", "")),
+            ft.Text("↓", size=24),
+            ft.Row(
+                controls=[
+                    flow_node("new CKr", after_ckr, tooltip=tooltips.get("step_viz_receive_new_ckr", ""), full_value=after_ckr_full),
+                    flow_node("message key", "derived", tooltip=tooltips.get("step_viz_receive_message_key", "")),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=24,
+            ),
+        ],
+        spacing=6,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+
+    dh_ratchet_before_rows = [
+        ("DHr", before_dhr, tooltips.get("step_viz_receive_before_dhr", ""), before_dhr_full),
+        ("DHs", before_dhs, tooltips.get("step_viz_receive_dh_ratchet_before_dhs", ""), before_dhs_full),
+        ("RK", before_rk, tooltips.get("step_viz_receive_before_rk", ""), before_rk_full),
+        ("CKr", before_ckr, tooltips.get("step_viz_receive_before_ckr", ""), before_ckr_full),
+        ("CKs", before_cks, tooltips.get("step_viz_receive_dh_ratchet_before_cks", ""), before_cks_full),
+        ("PN", str(before_pn), tooltips.get("step_viz_receive_dh_ratchet_before_pn", ""), None),
+        ("Ns", str(before_ns), tooltips.get("step_viz_receive_dh_ratchet_before_ns", ""), None),
+    ]
+    dh_ratchet_after_rows = [
+        ("DHr", after_dhr, tooltips.get("step_viz_receive_after_dhr", ""), after_dhr_full),
+        ("DHs", after_dhs, tooltips.get("step_viz_receive_dh_ratchet_after_dhs", ""), after_dhs_full),
+        ("RK", after_rk, tooltips.get("step_viz_receive_after_rk", ""), after_rk_full),
+        ("CKr", after_ckr, tooltips.get("step_viz_receive_after_ckr", ""), after_ckr_full),
+        ("CKs", after_cks, tooltips.get("step_viz_receive_dh_ratchet_after_cks", ""), after_cks_full),
+        ("PN", str(after_pn), tooltips.get("step_viz_receive_dh_ratchet_after_pn", ""), None),
+        ("Ns", str(after_ns), tooltips.get("step_viz_receive_dh_ratchet_after_ns", ""), None),
+    ]
+    dh_ratchet_before_values = {label: value for label, value, _, _ in dh_ratchet_before_rows}
+    dh_ratchet_after_values = {label: value for label, value, _, _ in dh_ratchet_after_rows}
+    dh_ratchet_changed_labels = {
+        label
+        for label, value in dh_ratchet_before_values.items()
+        if value != dh_ratchet_after_values.get(label)
+    }
+
+    step_dh_ratchet_data_flow = ft.Column(
+        controls=[
+            ft.Text("DH ratchet update", weight="bold"),
+            ft.Row(
+                controls=[
+                    flow_node("Header.dh", _last_n_chars(header_dh_full, 8), tooltip=tooltips.get("step_viz_receive_header_dh", ""), full_value=header_dh_full),
+                    flow_node("Current DHr", before_dhr, tooltip=tooltips.get("step_viz_receive_compare_dh", ""), full_value=before_dhr_full),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=16,
+            ),
+            ft.Text("↓", size=24),
+            flow_node(
+                "DHRatchet",
+                "apply",
+                circle=True,
+                tooltip=tooltips.get("step_viz_receive_dh_ratchet_apply", ""),
+                bgcolor=ft.Colors.ERROR_CONTAINER,
+                text_color=ft.Colors.ON_ERROR_CONTAINER,
+                border_color=ft.Colors.OUTLINE,
+            ),
+            ft.Text("↓", size=24),
+            ft.Row(
+                controls=[
+                    party_state_panel(
+                        "Before DH ratchet",
+                        dh_ratchet_before_rows,
+                        highlight_labels=dh_ratchet_changed_labels,
+                    ),
+                    party_state_panel(
+                        "After DH ratchet",
+                        dh_ratchet_after_rows,
+                        highlight_labels=dh_ratchet_changed_labels,
+                    ),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                vertical_alignment=ft.CrossAxisAlignment.START,
+                spacing=20,
+                wrap=True,
+            ),
+        ],
+        spacing=6,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+
+    step5_data_flow = ft.Column(
+        controls=[
+            ft.Text("5) Decrypt ciphertext", weight="bold"),
+            ft.Row(
+                controls=[
+                    flow_node("Ciphertext", cipher, tooltip=tooltips.get("step_viz_receive_decrypt_cipher", ""), full_value=cipher_full),
+                    flow_node("AD||header", tooltip=tooltips.get("step_viz_receive_decrypt_ad", "")),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=24,
+            ),
+            ft.Text("↓", size=24),
+            flow_node("DECRYPT", circle=True, tooltip=tooltips.get("step_viz_receive_decrypt_fn", "")),
+            ft.Text("↓", size=24),
+            flow_node("Plaintext", plaintext, width=280, tooltip=tooltips.get("step_viz_receive_plaintext", ""), full_value=decrypted_string),
+        ],
+        spacing=6,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+
+    before_rows = [
+        ("DHr", before_dhr, tooltips.get("step_viz_receive_before_dhr", ""), before_dhr_full),
+        ("RK", before_rk, tooltips.get("step_viz_receive_before_rk", ""), before_rk_full),
+        ("CKr", before_ckr, tooltips.get("step_viz_receive_before_ckr", ""), before_ckr_full),
+        ("Nr", str(before_nr), tooltips.get("step_viz_receive_before_nr", ""), None),
+    ]
+    after_rows = [
+        ("DHr", after_dhr, tooltips.get("step_viz_receive_after_dhr", ""), after_dhr_full),
+        ("RK", after_rk, tooltips.get("step_viz_receive_after_rk", ""), after_rk_full),
+        ("CKr", after_ckr, tooltips.get("step_viz_receive_after_ckr", ""), after_ckr_full),
+        ("Nr", str(after_nr), tooltips.get("step_viz_receive_after_nr", ""), None),
+    ]
+    before_values = {label: value for label, value, _, _ in before_rows}
+    after_values = {label: value for label, value, _, _ in after_rows}
+    changed_labels = {
+        label
+        for label, value in before_values.items()
+        if value != after_values.get(label)
+    }
+
+    step6_data_flow = ft.Column(
+        controls=[
+            ft.Text("6) Received", weight="bold"),
+            ft.Row(
+                controls=[
+                    flow_node(
+                        "Delivered message",
+                        f"{sender} -> {receiver}",
+                        width=260,
+                        tooltip=tooltips.get("step_viz_receive_delivered", ""),
+                    ),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+            ),
+            ft.Row(
+                controls=[
+                    party_state_panel(
+                        "Receiver state before",
+                        before_rows,
+                        highlight_labels=changed_labels,
+                    ),
+                    party_state_panel(
+                        "Receiver state after",
+                        after_rows,
+                        highlight_labels=changed_labels,
+                    ),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                vertical_alignment=ft.CrossAxisAlignment.START,
+                spacing=20,
+                wrap=True,
+            ),
+        ],
+        spacing=6,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+
+    steps = [
+        {
+            "title": "1) Incoming message and receiver state",
+            "control": step1_data_flow,
+        },
+        {
+            "title": "2) Skipped-message key check",
+            "control": step2_data_flow,
+        },
+        {
+            "title": "3) Header processing",
+            "control": step3_data_flow,
+        },
+    ]
+
+    if dh_ratchet_needed and not skipped_key_hit:
+        steps.append(
+            {
+                "title": "4) DH ratchet update",
+                "control": step_dh_ratchet_data_flow,
+            }
+        )
+
+    steps.extend(
+        [
+            {
+                "title": "5) Receive chain step",
+                "control": step4_data_flow,
+            },
+            {
+                "title": "6) Decrypt ciphertext",
+                "control": step5_data_flow,
+            },
+            {
+                "title": "7) Received",
+                "control": step6_data_flow,
+            },
+        ]
+    )
+
+    current_step = {"index": 0}
+    progress_text = ft.Text()
+    step_container = ft.Container(width=620)
+    previous_button = ft.TextButton("Previous", on_click=on_previous)
+    next_button = ft.TextButton("Next", on_click=on_next)
+
+    def render_current_step() -> None:
+        index = current_step["index"]
+        step = steps[index]
+        progress_text.value = f"Step {index + 1}/{len(steps)}"
+        step_container.content = step["control"]
+        previous_button.disabled = index == 0
+        next_button.text = "Finish" if index == len(steps) - 1 else "Next"
+
+    dialog_content = ft.Container(
+        content=ft.Column(
+            controls=[
+                progress_text,
+                ft.Text("Click Next to continue to the following step."),
+                ft.Row(controls=[step_container], alignment=ft.MainAxisAlignment.CENTER),
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            expand=True,
+            spacing=8,
+            scroll=ft.ScrollMode.ALWAYS,
+        ),
+        width=700,
+        height=460,
+    )
+
+    dialog = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Receiving ratchet step visualization"),
         content=dialog_content,
         actions=[previous_button, next_button, ft.TextButton("Close", on_click=close_dialog)],
         actions_alignment=ft.MainAxisAlignment.END,
