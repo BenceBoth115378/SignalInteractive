@@ -45,7 +45,7 @@ def _tooltip_with_full_value(message: str | None, full_value: Any = None) -> str
     return "".join(parts)
 
 
-def show_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> None:
+def show_sending_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> None:
     tooltips = get_tooltip_messages("double_ratchet")
 
     resize_event_name = "on_resized" if hasattr(page, "on_resized") else "on_resize"
@@ -145,27 +145,60 @@ def show_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> 
         )
         return with_tooltip(node, tooltip, full_value)
 
-    def state_row(label: str, value: str, tooltip: str | None = None, full_value: Any = None) -> ft.Control:
+    def state_row(
+        label: str,
+        value: str,
+        tooltip: str | None = None,
+        full_value: Any = None,
+        highlight: bool = False,
+    ) -> ft.Control:
         row = ft.Row(
             controls=[
-                ft.Text(f"{label}:", weight="bold"),
-                ft.Text(value),
+                ft.Text(
+                    f"{label}:",
+                    weight="bold",
+                    color=ft.Colors.ON_PRIMARY_CONTAINER if highlight else None,
+                ),
+                ft.Text(
+                    value,
+                    weight=ft.FontWeight.W_600 if highlight else None,
+                    color=ft.Colors.ON_PRIMARY_CONTAINER if highlight else None,
+                ),
             ],
             spacing=8,
             wrap=True,
         )
-        return with_tooltip(row, tooltip, full_value)
+        row_control: ft.Control = row
+        if highlight:
+            row_control = ft.Container(
+                content=row,
+                padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                border_radius=6,
+                bgcolor=ft.Colors.PRIMARY_CONTAINER,
+            )
+        return with_tooltip(row_control, tooltip, full_value)
 
     def party_state_panel(
         title: str,
         rows: list[tuple[str, str, str | None, Any]],
         tooltip: str | None = None,
+        highlight_labels: set[str] | None = None,
     ) -> ft.Control:
+        highlighted = highlight_labels or set()
         panel = ft.Container(
             content=ft.Column(
                 controls=[
                     ft.Text(title, size=16, weight="bold"),
-                    *[state_row(label, value, row_tooltip, full_value) for label, value, row_tooltip, full_value in rows],
+                    *[
+                        state_row(
+                            label,
+                            value,
+                            row_tooltip,
+                            full_value,
+                            highlight=label in highlighted,
+                        )
+                        for label, value, row_tooltip, full_value in rows
+                    ],
                 ],
                 spacing=4,
                 tight=True,
@@ -208,6 +241,10 @@ def show_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> 
     header_preview = (
         f"dh={_last_n_chars(header_dh_full, 8)}, "
         f"pn={step_data.get('header_pn', '?')}, n={step_data.get('header_n', '?')}"
+    )
+    step2_cks_transition_full = (
+        f"old CKs: {_to_text(before_cks_full)}\n"
+        f"new CKs: {_to_text(after_cks_full)}"
     )
 
     step1_data_flow = ft.Column(
@@ -264,6 +301,7 @@ def show_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> 
                 width=260,
                 height=105,
                 tooltip=tooltips.get("step_viz_state_update", ""),
+                full_value=step2_cks_transition_full,
             ),
         ],
         spacing=6,
@@ -311,48 +349,62 @@ def show_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> 
             flow_node("HEADER", circle=True, tooltip=tooltips.get("step_viz_header_fn", "")),
             ft.Text("↓", size=24),
             flow_node("Header", header_preview, width=360, tooltip=tooltips.get("step_viz_header_output", ""), full_value=f"dh={_to_text(header_dh_full)}, pn={step_data.get('header_pn', '?')}, n={step_data.get('header_n', '?')}"),
-            ft.Container(height=8),
-            ft.Divider(height=1),
-            ft.Container(height=8),
-            party_state_panel(
-                "Party state after send",
-                [
-                    ("CKs", after_cks, tooltips.get("step_viz_sender_after_cks", ""), after_cks_full),
-                    ("Ns", str(after_ns), tooltips.get("step_viz_sender_after_ns", ""), None),
-                ],
-                tooltip=tooltips.get("step_viz_sender_after_panel", ""),
-            ),
         ],
         spacing=6,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
+    step5_before_rows = [
+        ("DHs", before_dh, tooltips.get("step_viz_sent_before_dhs", ""), before_dh_full),
+        ("PN", str(before_pn), tooltips.get("step_viz_sent_before_pn", ""), None),
+        ("Ns", str(before_ns), tooltips.get("step_viz_sent_before_ns", ""), None),
+        ("CKs", before_cks, tooltips.get("step_viz_sent_before_cks", ""), before_cks_full),
+    ]
+    step5_after_rows = [
+        ("DHs", before_dh, tooltips.get("step_viz_sent_after_dhs", ""), before_dh_full),
+        ("PN", str(before_pn), tooltips.get("step_viz_sent_after_pn", ""), None),
+        ("Ns", str(after_ns), tooltips.get("step_viz_sent_after_ns", ""), None),
+        ("CKs", after_cks, tooltips.get("step_viz_sent_after_cks", ""), after_cks_full),
+    ]
+    step5_before_values = {label: value for label, value, _, _ in step5_before_rows}
+    step5_after_values = {label: value for label, value, _, _ in step5_after_rows}
+    changed_step5_labels = {
+        label
+        for label, value in step5_before_values.items()
+        if value != step5_after_values.get(label)
+    }
+
     step5_data_flow = ft.Column(
         controls=[
             ft.Text("5) Sent", weight="bold"),
-            party_state_panel(
-                "Party state before send",
-                [
-                    ("DHs", before_dh, tooltips.get("step_viz_sent_before_dhs", ""), before_dh_full),
-                    ("PN", str(before_pn), tooltips.get("step_viz_sent_before_pn", ""), None),
-                    ("Ns", str(before_ns), tooltips.get("step_viz_sent_before_ns", ""), None),
-                    ("CKs", before_cks, tooltips.get("step_viz_sent_before_cks", ""), before_cks_full),
+            ft.Row(
+                controls=[
+                    flow_node(
+                        "Pending queue",
+                        f"ID: {step_data.get('pending_id', '?')}\n{sender} -> {receiver}",
+                        width=280,
+                        tooltip=tooltips.get("step_viz_pending_queue", ""),
+                    ),
                 ],
+                alignment=ft.MainAxisAlignment.CENTER,
             ),
-            flow_node(
-                "Pending queue",
-                f"ID: {step_data.get('pending_id', '?')}\n{sender} -> {receiver}",
-                width=280,
-                tooltip=tooltips.get("step_viz_pending_queue", ""),
-            ),
-            party_state_panel(
-                "Party state after send",
-                [
-                    ("DHs", before_dh, tooltips.get("step_viz_sent_after_dhs", ""), before_dh_full),
-                    ("PN", str(before_pn), tooltips.get("step_viz_sent_after_pn", ""), None),
-                    ("Ns", str(after_ns), tooltips.get("step_viz_sent_after_ns", ""), None),
-                    ("CKs", after_cks, tooltips.get("step_viz_sent_after_cks", ""), after_cks_full),
+            ft.Row(
+                controls=[
+                    party_state_panel(
+                        "Party state before send",
+                        step5_before_rows,
+                        highlight_labels=changed_step5_labels,
+                    ),
+                    party_state_panel(
+                        "Party state after send",
+                        step5_after_rows,
+                        highlight_labels=changed_step5_labels,
+                    ),
                 ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                vertical_alignment=ft.CrossAxisAlignment.START,
+                spacing=20,
+                wrap=True,
             ),
         ],
         spacing=6,
@@ -407,7 +459,7 @@ def show_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> 
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             expand=True,
             spacing=8,
-            scroll=ft.ScrollMode.AUTO,
+            scroll=ft.ScrollMode.ALWAYS,
         ),
         width=700,
         height=460,

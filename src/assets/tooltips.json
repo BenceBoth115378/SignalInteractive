@@ -22,7 +22,7 @@
     "step_viz_kdf_ck": "Symmetric-key KDF: derives next CKs and message key mk.",
     "step_viz_new_cks": "Next sending chain key stored back into state.",
     "step_viz_message_key": "One-time message key used for encrypting this message.",
-    "step_viz_state_update": "Sender state mutation after symmetric ratchet send step.",
+    "step_viz_state_update": "Sender state update after the send-chain step: CKs rotates to a fresh chain key and Ns increments by 1.",
     "step_viz_encrypt_mk": "Derived message key from step 2.",
     "step_viz_encrypt_plaintext": "Same plaintext that will be encrypted.",
     "step_viz_ad_header": "Concatenated associated data and header fed into ENCRYPT.",

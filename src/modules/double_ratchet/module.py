@@ -9,7 +9,7 @@ from modules.double_ratchet.logic import (
     RatchetEncrypt,
     initialize_session,
 )
-from modules.double_ratchet.step_visualization import show_step_visualization_dialog
+from modules.double_ratchet.step_visualization import show_sending_step_visualization_dialog
 from modules.double_ratchet.view import build_visual
 from components.data_classes import PartyState
 
@@ -369,7 +369,7 @@ class DoubleRatchetModule(BaseModule):
 
     def build(self, page, app_state):
         message_count = ft.Text(f"Messages exchanged: {len(self.session.message_log)}")
-        step_visualization_checkbox = ft.Checkbox(label="Step-by-step vizualization", value=False)
+        step_visualization_checkbox = ft.Checkbox(label="Show sending ratchet step visualization", value=False)
         alice_input = ft.TextField(dense=True, expand=True)
         bob_input = ft.TextField(dense=True, expand=True)
         visual_container = ft.Container(expand=True)
@@ -394,7 +394,7 @@ class DoubleRatchetModule(BaseModule):
             page.update()
 
         def show_step_visualization(step_data: dict[str, Any]) -> None:
-            show_step_visualization_dialog(page, step_data)
+            show_sending_step_visualization_dialog(page, step_data)
 
         def refresh_view() -> None:
             message_count.value = f"Messages exchanged: {len(self.session.message_log)}"
@@ -404,7 +404,6 @@ class DoubleRatchetModule(BaseModule):
                 self.session,
                 app_state.perspective,
                 page,
-                step_visualization_checkbox=step_visualization_checkbox,
                 alice_input=alice_input,
                 bob_input=bob_input,
                 on_send_alice=on_send_alice,
@@ -454,7 +453,14 @@ class DoubleRatchetModule(BaseModule):
 
         return ft.Column(
             controls=[
-                ft.Text("Double Ratchet Simulation", size=22, weight="bold"),
+                ft.Row(
+                    controls=[
+                        ft.Text("Double Ratchet Simulation", size=22, weight="bold"),
+                        step_visualization_checkbox,
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
                 message_count,
                 visual_container,
             ],
