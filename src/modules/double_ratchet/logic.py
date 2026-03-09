@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from components.data_classes import DHKeyPair, Header, LimitedSkippedKeys, PartyState, DoubleRatchetState
 from . import external as ext
 
@@ -56,14 +58,26 @@ def RatchetEncrypt(state: PartyState, plaintext: bytes, AD: bytes) -> tuple[Head
     return header, ext.ENCRYPT(mk, plaintext, ext.CONCAT(AD, header)), mk
 
 
-def RatchetReceiveKey(state: PartyState, header: Header) -> bytes:
+def RatchetReceiveKey(state: PartyState, header: Header, trace: dict[str, Any] | None = None) -> bytes:
     mk = TrySkippedMessageKeys(state, header)
     if mk is not None:
+        if trace is not None:
+            trace["used_skipped_mk"] = True
+            trace["ckr_before_kdf_ck"] = None
+            trace["ckr_after_double_ratchet"] = None
         return mk
+    if trace is not None:
+        trace["used_skipped_mk"] = False
     if header.dh != state.DHr:
         SkipMessageKeys(state, header.pn)
         DHRatchet(state, header)
+        if trace is not None:
+            trace["ckr_after_double_ratchet"] = state.CKr
+    elif trace is not None:
+        trace["ckr_after_double_ratchet"] = None
     SkipMessageKeys(state, header.n)
+    if trace is not None:
+        trace["ckr_before_kdf_ck"] = state.CKr
     state.CKr, mk = ext.KDF_CK(state.CKr)
     state.Nr += 1
     return mk

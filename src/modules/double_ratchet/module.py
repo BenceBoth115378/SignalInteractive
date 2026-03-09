@@ -5,10 +5,11 @@ from typing import Any
 from components.data_classes import DoubleRatchetState, Header, MessageState
 from modules.base_module import BaseModule
 from modules.double_ratchet.logic import (
-    RatchetDecrypt,
     RatchetEncrypt,
+    RatchetReceiveKey,
     initialize_session,
 )
+from modules.double_ratchet import external as ext
 from modules.double_ratchet.step_visualization import (
     show_receiving_step_visualization_dialog,
     show_sending_step_visualization_dialog,
@@ -309,13 +310,15 @@ class DoubleRatchetModule(BaseModule):
             fast_forward_from_nr = before_nr
             fast_forward_to_nr = before_nr + fast_forward_count
         associated_data = b""
-        decrypted = RatchetDecrypt(receiver_state, header, cipher, associated_data)
+        receive_trace: dict[str, Any] = {}
+        mk = RatchetReceiveKey(receiver_state, header, trace=receive_trace)
+        decrypted = ext.DECRYPT(mk, cipher, ext.CONCAT(associated_data, header))
 
         self.session.message_log.append(
             MessageState(
                 sender=pending["sender"],
                 receiver=pending["receiver"],
-                message_key=b"",
+                message_key=mk,
                 cipher=cipher,
                 decrypted_by_bob=decrypted if recipient_name == "Bob" else b"",
                 decrypted_by_alice=decrypted if recipient_name == "Alice" else b"",
@@ -333,6 +336,9 @@ class DoubleRatchetModule(BaseModule):
             "header_pn": header.pn,
             "header_n": header.n,
             "cipher": cipher,
+            "mk": mk,
+            "ckr_after_double_ratchet": receive_trace.get("ckr_after_double_ratchet"),
+            "ckr_before_kdf_ck": receive_trace.get("ckr_before_kdf_ck"),
             "decrypted": decrypted,
             "skipped_key_hit": skipped_key_hit,
             "dh_ratchet_needed": dh_ratchet_needed,
