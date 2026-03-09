@@ -1,6 +1,7 @@
 from typing import Any
 
 import flet as ft
+from components.data_classes import ReceiveStepVisualizationSnapshot, SendStepVisualizationSnapshot
 from modules.tooltip_helpers import get_tooltip_messages
 
 
@@ -45,7 +46,7 @@ def _tooltip_with_full_value(message: str | None, full_value: Any = None) -> str
     return "".join(parts)
 
 
-def show_sending_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> None:
+def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVisualizationSnapshot) -> None:
     tooltips = get_tooltip_messages("double_ratchet")
 
     resize_event_name = "on_resized" if hasattr(page, "on_resized") else "on_resize"
@@ -215,9 +216,9 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: dict[str, A
         )
         return with_tooltip(panel, tooltip)
 
-    sender = step_data.get("sender", "?")
-    receiver = step_data.get("receiver", "?")
-    plaintext_raw = step_data.get("plaintext", b"")
+    sender = step_data.sender
+    receiver = step_data.receiver
+    plaintext_raw = step_data.plaintext
     if isinstance(plaintext_raw, bytes):
         try:
             plaintext_string = plaintext_raw.decode("utf-8")
@@ -227,24 +228,24 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: dict[str, A
         plaintext_string = str(plaintext_raw)
 
     plaintext = _preview_value(plaintext_string, limit=40)
-    cipher_full = step_data.get("cipher", b"")
-    mk_full = step_data.get("mk", b"")
-    before_cks_full = step_data.get("before_cks")
-    after_cks_full = step_data.get("after_cks")
-    before_dh_full = step_data.get("before_dh", "")
-    header_dh_full = step_data.get("header_dh", "")
+    cipher_full = step_data.cipher
+    mk_full = step_data.mk
+    before_cks_full = step_data.before.CKs
+    after_cks_full = step_data.after.CKs
+    before_dh_full = step_data.before.DHs_public
+    header_dh_full = step_data.header.dh
 
     cipher = _last_n_chars(cipher_full, 8)
     mk = _last_n_chars(mk_full, 8)
     before_cks = _last_n_chars(before_cks_full, 8)
     after_cks = _last_n_chars(after_cks_full, 8)
-    after_ns = step_data.get("after_ns", "?")
-    before_ns = step_data.get("before_ns", "?")
-    before_pn = step_data.get("before_pn", "?")
+    after_ns = step_data.after.Ns
+    before_ns = step_data.before.Ns
+    before_pn = step_data.before.PN
     before_dh = _last_n_chars(before_dh_full, 8)
     header_preview = (
         f"dh={_last_n_chars(header_dh_full, 8)}, "
-        f"pn={step_data.get('header_pn', '?')}, n={step_data.get('header_n', '?')}"
+        f"pn={step_data.header.pn}, n={step_data.header.n}"
     )
     step2_cks_transition_full = (
         f"old CKs: {_to_text(before_cks_full)}\n"
@@ -352,7 +353,7 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: dict[str, A
             ft.Text("↓", size=24),
             flow_node("HEADER", circle=True, tooltip=tooltips.get("step_viz_header_fn", "")),
             ft.Text("↓", size=24),
-            flow_node("Header", header_preview, width=360, tooltip=tooltips.get("step_viz_header_output", ""), full_value=f"dh={_to_text(header_dh_full)}, pn={step_data.get('header_pn', '?')}, n={step_data.get('header_n', '?')}"),
+            flow_node("Header", header_preview, width=360, tooltip=tooltips.get("step_viz_header_output", ""), full_value=f"dh={_to_text(header_dh_full)}, pn={step_data.header.pn}, n={step_data.header.n}"),
         ],
         spacing=6,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -385,7 +386,7 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: dict[str, A
                 controls=[
                     flow_node(
                         "Pending queue",
-                        f"ID: {step_data.get('pending_id', '?')}\n{sender} -> {receiver}",
+                        f"ID: {step_data.pending_id}\n{sender} -> {receiver}",
                         width=280,
                         tooltip=tooltips.get("step_viz_pending_queue", ""),
                     ),
@@ -484,7 +485,7 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: dict[str, A
     page.update()
 
 
-def show_receiving_step_visualization_dialog(page: ft.Page, step_data: dict[str, Any]) -> None:
+def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveStepVisualizationSnapshot) -> None:
     tooltips = get_tooltip_messages("double_ratchet")
 
     resize_event_name = "on_resized" if hasattr(page, "on_resized") else "on_resize"
@@ -654,11 +655,11 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: dict[str,
         )
         return with_tooltip(panel, tooltip)
 
-    sender = step_data.get("sender", "?")
-    receiver = step_data.get("receiver", "?")
-    decrypted_full = step_data.get("decrypted", step_data.get("plaintext", b""))
-    cipher_full = step_data.get("cipher", b"")
-    header_dh_full = step_data.get("header_dh", "")
+    sender = step_data.sender
+    receiver = step_data.receiver
+    decrypted_full = step_data.decrypted
+    cipher_full = step_data.cipher
+    header_dh_full = step_data.header.dh
 
     if isinstance(decrypted_full, bytes):
         try:
@@ -672,36 +673,36 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: dict[str,
     cipher = _last_n_chars(cipher_full, 8)
     header_preview = (
         f"dh={_last_n_chars(header_dh_full, 8)}, "
-        f"pn={step_data.get('header_pn', '?')}, n={step_data.get('header_n', '?')}"
+        f"pn={step_data.header.pn}, n={step_data.header.n}"
     )
-    mk_full = step_data.get("mk", b"")
+    mk_full = step_data.mk
     mk = _last_n_chars(mk_full, 8)
 
-    before_ckr_full = step_data.get("before_ckr")
-    after_ckr_full = step_data.get("after_ckr")
-    before_rk_full = step_data.get("before_rk")
-    after_rk_full = step_data.get("after_rk")
-    before_dhr_full = step_data.get("before_dhr", "")
-    after_dhr_full = step_data.get("after_dhr", "")
-    before_dhs_full = step_data.get("before_dhs", "")
-    after_dhs_full = step_data.get("after_dhs", "")
-    before_cks_full = step_data.get("before_cks")
-    after_cks_full = step_data.get("after_cks")
-    ckr_after_double_ratchet_full = step_data.get("ckr_after_double_ratchet")
-    ckr_before_kdf_ck_full = step_data.get("ckr_before_kdf_ck")
-    before_nr = step_data.get("before_nr", "?")
-    after_nr = step_data.get("after_nr", "?")
-    before_ns = step_data.get("before_ns", "?")
-    after_ns = step_data.get("after_ns", "?")
-    before_pn = step_data.get("before_pn", "?")
-    after_pn = step_data.get("after_pn", "?")
-    skipped_key_hit = bool(step_data.get("skipped_key_hit", False))
-    dh_ratchet_needed = bool(step_data.get("dh_ratchet_needed", False))
-    fast_forward_count = int(step_data.get("fast_forward_count", 0) or 0)
-    fast_forward_from_nr = step_data.get("fast_forward_from_nr", before_nr)
-    fast_forward_to_nr = step_data.get("fast_forward_to_nr", before_nr)
-    header_n = int(step_data.get("header_n", 0) or 0)
-    header_pn = int(step_data.get("header_pn", 0) or 0)
+    before_ckr_full = step_data.before.CKr
+    after_ckr_full = step_data.after.CKr
+    before_rk_full = step_data.before.RK
+    after_rk_full = step_data.after.RK
+    before_dhr_full = step_data.before.DHr or ""
+    after_dhr_full = step_data.after.DHr or ""
+    before_dhs_full = step_data.before.DHs_public
+    after_dhs_full = step_data.after.DHs_public
+    before_cks_full = step_data.before.CKs
+    after_cks_full = step_data.after.CKs
+    ckr_after_double_ratchet_full = step_data.ckr_after_double_ratchet
+    ckr_before_kdf_ck_full = step_data.ckr_before_kdf_ck
+    before_nr = step_data.before.Nr
+    after_nr = step_data.after.Nr
+    before_ns = step_data.before.Ns
+    after_ns = step_data.after.Ns
+    before_pn = step_data.before.PN
+    after_pn = step_data.after.PN
+    skipped_key_hit = step_data.skipped_key_hit
+    dh_ratchet_needed = step_data.dh_ratchet_needed
+    fast_forward_count = step_data.fast_forward_count
+    fast_forward_from_nr = step_data.fast_forward_from_nr
+    fast_forward_to_nr = step_data.fast_forward_to_nr
+    header_n = step_data.header.n
+    header_pn = step_data.header.pn
     before_nr_int = int(before_nr)
     pn_fast_forward_count = max(0, header_pn - before_nr_int) if dh_ratchet_needed else 0
     pn_fast_forward_from_nr = before_nr_int
@@ -730,7 +731,7 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: dict[str,
                         header_preview,
                         width=360,
                         tooltip=tooltips.get("step_viz_receive_header", ""),
-                        full_value=f"dh={_to_text(header_dh_full)}, pn={step_data.get('header_pn', '?')}, n={step_data.get('header_n', '?')}",
+                        full_value=f"dh={_to_text(header_dh_full)}, pn={step_data.header.pn}, n={step_data.header.n}",
                     ),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
@@ -761,10 +762,10 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: dict[str,
         ft.Text("Skipped-message key check", weight="bold"),
         flow_node(
             "Lookup key",
-            f"(dh, n)=({_last_n_chars(header_dh_full, 8)}, {step_data.get('header_n', '?')})",
+            f"(dh, n)=({_last_n_chars(header_dh_full, 8)}, {step_data.header.n})",
             width=300,
             tooltip=tooltips.get("step_viz_receive_skipped_lookup", ""),
-            full_value=f"dh={_to_text(header_dh_full)}, n={step_data.get('header_n', '?')}",
+            full_value=f"dh={_to_text(header_dh_full)}, n={step_data.header.n}",
         ),
         ft.Text("↓", size=24),
         flow_node(

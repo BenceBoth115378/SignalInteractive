@@ -2,7 +2,14 @@ import flet as ft
 from dataclasses import asdict
 from typing import Any
 
-from components.data_classes import DoubleRatchetState, Header, MessageState
+from components.data_classes import (
+    DoubleRatchetState,
+    Header,
+    MessageState,
+    PartyStateSnapshot,
+    ReceiveStepVisualizationSnapshot,
+    SendStepVisualizationSnapshot,
+)
 from modules.base_module import BaseModule
 from modules.double_ratchet.logic import (
     RatchetEncrypt,
@@ -270,7 +277,19 @@ class DoubleRatchetModule(BaseModule):
         )
         return delivered_count + pending_count
 
-    def receive_message(self, recipient: str, pending_id: int) -> dict[str, Any] | None:
+    def _snapshot_party_state(self, state: PartyState) -> PartyStateSnapshot:
+        return PartyStateSnapshot(
+            DHs_public=state.DHs.public if state.DHs is not None else "",
+            DHr=state.DHr,
+            RK=state.RK,
+            CKs=state.CKs,
+            CKr=state.CKr,
+            Ns=state.Ns,
+            Nr=state.Nr,
+            PN=state.PN,
+        )
+
+    def receive_message(self, recipient: str, pending_id: int) -> ReceiveStepVisualizationSnapshot | None:
         recipient_name = "Alice" if recipient.lower() == "alice" else "Bob"
 
         pending = next(
@@ -285,30 +304,23 @@ class DoubleRatchetModule(BaseModule):
             return None
 
         receiver_state = self._get_party(recipient_name)
-        before_nr = receiver_state.Nr
-        before_ckr = receiver_state.CKr
-        before_rk = receiver_state.RK
-        before_dhr = receiver_state.DHr
-        before_dhs = receiver_state.DHs.public if receiver_state.DHs is not None else ""
-        before_cks = receiver_state.CKs
-        before_ns = receiver_state.Ns
-        before_pn = receiver_state.PN
+        before_snapshot = self._snapshot_party_state(receiver_state)
         header = pending["header"]
         cipher = pending["cipher"]
         skipped_key_hit = (header.dh, header.n) in receiver_state.MKSKIPPED
-        dh_ratchet_needed = (not skipped_key_hit) and (header.dh != before_dhr)
+        dh_ratchet_needed = (not skipped_key_hit) and (header.dh != before_snapshot.DHr)
         if skipped_key_hit:
             fast_forward_count = 0
-            fast_forward_from_nr = before_nr
-            fast_forward_to_nr = before_nr
+            fast_forward_from_nr = before_snapshot.Nr
+            fast_forward_to_nr = before_snapshot.Nr
         elif dh_ratchet_needed:
             fast_forward_count = max(0, header.n)
             fast_forward_from_nr = 0
             fast_forward_to_nr = header.n
         else:
-            fast_forward_count = max(0, header.n - before_nr)
-            fast_forward_from_nr = before_nr
-            fast_forward_to_nr = before_nr + fast_forward_count
+            fast_forward_count = max(0, header.n - before_snapshot.Nr)
+            fast_forward_from_nr = before_snapshot.Nr
+            fast_forward_to_nr = before_snapshot.Nr + fast_forward_count
         associated_data = b""
         receive_trace: dict[str, Any] = {}
         mk = RatchetReceiveKey(receiver_state, header, trace=receive_trace)
@@ -328,41 +340,27 @@ class DoubleRatchetModule(BaseModule):
         )
         self.pending_messages = [item for item in self.pending_messages if item["id"] != pending_id]
 
-        return {
-            "sender": pending["sender"],
-            "receiver": pending["receiver"],
-            "pending_id": pending_id,
-            "header_dh": header.dh,
-            "header_pn": header.pn,
-            "header_n": header.n,
-            "cipher": cipher,
-            "mk": mk,
-            "ckr_after_double_ratchet": receive_trace.get("ckr_after_double_ratchet"),
-            "ckr_before_kdf_ck": receive_trace.get("ckr_before_kdf_ck"),
-            "decrypted": decrypted,
-            "skipped_key_hit": skipped_key_hit,
-            "dh_ratchet_needed": dh_ratchet_needed,
-            "fast_forward_count": fast_forward_count,
-            "fast_forward_from_nr": fast_forward_from_nr,
-            "fast_forward_to_nr": fast_forward_to_nr,
-            "plaintext": pending.get("plaintext", b"") or decrypted,
-            "before_nr": before_nr,
-            "after_nr": receiver_state.Nr,
-            "before_ckr": before_ckr,
-            "after_ckr": receiver_state.CKr,
-            "before_rk": before_rk,
-            "after_rk": receiver_state.RK,
-            "before_dhr": before_dhr,
-            "after_dhr": receiver_state.DHr,
-            "before_dhs": before_dhs,
-            "after_dhs": receiver_state.DHs.public if receiver_state.DHs is not None else "",
-            "before_cks": before_cks,
-            "after_cks": receiver_state.CKs,
-            "before_ns": before_ns,
-            "after_ns": receiver_state.Ns,
-            "before_pn": before_pn,
-            "after_pn": receiver_state.PN,
-        }
+        after_snapshot = self._snapshot_party_state(receiver_state)
+
+        return ReceiveStepVisualizationSnapshot(
+            sender=pending["sender"],
+            receiver=pending["receiver"],
+            pending_id=pending_id,
+            header=header,
+            cipher=cipher,
+            mk=mk,
+            decrypted=decrypted,
+            plaintext=pending.get("plaintext", b"") or decrypted,
+            skipped_key_hit=skipped_key_hit,
+            dh_ratchet_needed=dh_ratchet_needed,
+            fast_forward_count=fast_forward_count,
+            fast_forward_from_nr=fast_forward_from_nr,
+            fast_forward_to_nr=fast_forward_to_nr,
+            ckr_after_double_ratchet=receive_trace.get("ckr_after_double_ratchet"),
+            ckr_before_kdf_ck=receive_trace.get("ckr_before_kdf_ck"),
+            before=before_snapshot,
+            after=after_snapshot,
+        )
 
     def send_message(
         self,
@@ -370,7 +368,7 @@ class DoubleRatchetModule(BaseModule):
         sender: str = "alice",
         plaintext: str | None = None,
         fallback_plaintext: str | None = None,
-    ) -> dict[str, Any] | None:
+    ) -> SendStepVisualizationSnapshot | None:
         sender_key = sender.lower()
         if sender_key not in {"alice", "bob"}:
             return None
@@ -410,10 +408,7 @@ class DoubleRatchetModule(BaseModule):
         associated_data = b""
         plaintext_bytes = text_to_send.encode("utf-8")
 
-        before_ns = sender_state.Ns
-        before_pn = sender_state.PN
-        before_dh = sender_state.DHs.public if sender_state.DHs is not None else ""
-        before_cks = sender_state.CKs
+        before_snapshot = self._snapshot_party_state(sender_state)
 
         header, cipher, mk = RatchetEncrypt(sender_state, plaintext_bytes, associated_data)
         pending_id = self._next_pending_id
@@ -429,25 +424,20 @@ class DoubleRatchetModule(BaseModule):
         )
         self._next_pending_id += 1
 
-        return {
-            "sender": sender_name,
-            "receiver": receiver_name,
-            "plaintext": plaintext_bytes,
-            "header": header,
-            "cipher": cipher,
-            "mk": mk,
-            "pending_id": pending_id,
-            "before_ns": before_ns,
-            "after_ns": sender_state.Ns,
-            "before_pn": before_pn,
-            "header_n": header.n,
-            "header_pn": header.pn,
-            "header_dh": header.dh,
-            "before_dh": before_dh,
-            "before_cks": before_cks,
-            "after_cks": sender_state.CKs,
-            "initializer_switch_warning": initializer_switch_warning,
-        }
+        after_snapshot = self._snapshot_party_state(sender_state)
+
+        return SendStepVisualizationSnapshot(
+            sender=sender_name,
+            receiver=receiver_name,
+            plaintext=plaintext_bytes,
+            header=header,
+            cipher=cipher,
+            mk=mk,
+            pending_id=pending_id,
+            before=before_snapshot,
+            after=after_snapshot,
+            initializer_switch_warning=initializer_switch_warning,
+        )
 
     def build(self, page, app_state):
         message_count = ft.Text(f"Messages exchanged: {len(self.session.message_log)}")
@@ -476,10 +466,10 @@ class DoubleRatchetModule(BaseModule):
             dialog.open = True
             page.update()
 
-        def show_step_visualization(step_data: dict[str, Any]) -> None:
+        def show_step_visualization(step_data: SendStepVisualizationSnapshot) -> None:
             show_sending_step_visualization_dialog(page, step_data)
 
-        def show_receive_step_visualization(step_data: dict[str, Any]) -> None:
+        def show_receive_step_visualization(step_data: ReceiveStepVisualizationSnapshot) -> None:
             show_receiving_step_visualization_dialog(page, step_data)
 
         def refresh_view() -> None:
@@ -511,7 +501,7 @@ class DoubleRatchetModule(BaseModule):
             alice_input.value = ""
             refresh_view()
             page.update()
-            warning_message = step_data.get("initializer_switch_warning") if step_data is not None else None
+            warning_message = step_data.initializer_switch_warning if step_data is not None else None
             if warning_message:
                 show_warning(warning_message)
             if send_step_visualization_checkbox.value and step_data is not None and not warning_message:
@@ -530,7 +520,7 @@ class DoubleRatchetModule(BaseModule):
             bob_input.value = ""
             refresh_view()
             page.update()
-            warning_message = step_data.get("initializer_switch_warning") if step_data is not None else None
+            warning_message = step_data.initializer_switch_warning if step_data is not None else None
             if warning_message:
                 show_warning(warning_message)
             if send_step_visualization_checkbox.value and step_data is not None and not warning_message:

@@ -93,3 +93,50 @@ class MessageState:
     decrypted_by_alice: bytes = b""
     header: Header | None = None
     plaintext: bytes = b""
+
+
+@dataclass
+class PartyStateSnapshot:
+    DHs_public: str = ""
+    DHr: str | None = ""
+    RK: bytes | None = None
+    CKs: bytes | None = None
+    CKr: bytes | None = None
+    Ns: int = 0
+    Nr: int = 0
+    PN: int = 0
+
+
+@dataclass
+class SendStepVisualizationSnapshot:
+    sender: str
+    receiver: str
+    plaintext: bytes
+    header: Header
+    cipher: bytes
+    mk: bytes
+    pending_id: int
+    before: PartyStateSnapshot
+    after: PartyStateSnapshot
+    initializer_switch_warning: str | None = None
+
+
+@dataclass
+class ReceiveStepVisualizationSnapshot:
+    sender: str
+    receiver: str
+    pending_id: int
+    header: Header
+    cipher: bytes
+    mk: bytes
+    decrypted: bytes
+    plaintext: bytes
+    skipped_key_hit: bool
+    dh_ratchet_needed: bool
+    fast_forward_count: int
+    fast_forward_from_nr: int
+    fast_forward_to_nr: int
+    ckr_after_double_ratchet: bytes | None
+    ckr_before_kdf_ck: bytes | None
+    before: PartyStateSnapshot
+    after: PartyStateSnapshot
