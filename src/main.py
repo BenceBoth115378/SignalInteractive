@@ -27,6 +27,16 @@ def main(page: ft.Page):
 
         save_state(serialize_payload(app_state, router))
 
+    def _reset_application_state() -> None:
+        nonlocal app_state, router
+        nonlocal autosave_enabled, waiting_for_startup_choice
+
+        clear_state()
+        app_state = AppState()
+        router = Router()
+        autosave_enabled = True
+        waiting_for_startup_choice = False
+
     def refresh():
         nonlocal waiting_for_startup_choice
 
@@ -44,10 +54,18 @@ def main(page: ft.Page):
         module = router.get_current_module(app_state)
         content = module.build(page, app_state)
 
+        menu_row = ft.Row(
+            controls=[
+                ft.TextButton("Reset application", on_click=lambda e: _reset_application()),
+            ],
+            alignment=ft.MainAxisAlignment.END,
+        )
+
         navigation = build_navigation(
             page, app_state, router, refresh
         )
 
+        main_container.controls.append(menu_row)
         main_container.controls.append(content)
         main_container.controls.append(navigation)
 
@@ -55,15 +73,12 @@ def main(page: ft.Page):
         _persist_runtime_state()
 
     def _start_new(e):
-        nonlocal app_state, router
-        nonlocal autosave_enabled, waiting_for_startup_choice
+        _reset_application_state()
 
-        clear_state()
-        app_state = AppState()
-        router = Router()
-        autosave_enabled = True
-        waiting_for_startup_choice = False
+        refresh()
 
+    def _reset_application() -> None:
+        _reset_application_state()
         refresh()
 
     def _load_saved(e):
