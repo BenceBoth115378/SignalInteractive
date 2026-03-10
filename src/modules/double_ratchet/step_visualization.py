@@ -245,7 +245,7 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVis
     before_dh = _last_n_chars(before_dh_full, 8)
     header_preview = (
         f"dh={_last_n_chars(header_dh_full, 8)}, "
-        f"pn={step_data.header.pn}, n={step_data.header.n}"
+        f"pn={step_data.header.pn}, n={step_data.header.n + 1}"
     )
     step2_cks_transition_full = (
         f"old CKs: {_to_text(before_cks_full)}\n"
@@ -345,7 +345,7 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVis
                 controls=[
                     flow_node("DHs", before_dh, tooltip=tooltips.get("step_viz_header_dhs", ""), full_value=before_dh_full),
                     flow_node("PN", str(before_pn), tooltip=tooltips.get("step_viz_header_pn", "")),
-                    flow_node("N", str(before_ns), tooltip=tooltips.get("step_viz_header_n", "")),
+                    flow_node("N", str(before_ns + 1), tooltip=tooltips.get("step_viz_header_n", "")),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 spacing=16,
@@ -353,7 +353,7 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVis
             ft.Text("↓", size=24),
             flow_node("HEADER", circle=True, tooltip=tooltips.get("step_viz_header_fn", "")),
             ft.Text("↓", size=24),
-            flow_node("Header", header_preview, width=360, tooltip=tooltips.get("step_viz_header_output", ""), full_value=f"dh={_to_text(header_dh_full)}, pn={step_data.header.pn}, n={step_data.header.n}"),
+            flow_node("Header", header_preview, width=360, tooltip=tooltips.get("step_viz_header_output", ""), full_value=f"dh={_to_text(header_dh_full)}, pn={step_data.header.pn}, n={step_data.header.n + 1}"),
         ],
         spacing=6,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -673,7 +673,7 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
     cipher = _last_n_chars(cipher_full, 8)
     header_preview = (
         f"dh={_last_n_chars(header_dh_full, 8)}, "
-        f"pn={step_data.header.pn}, n={step_data.header.n}"
+        f"pn={step_data.header.pn}, n={step_data.header.n + 1}"
     )
     mk_full = step_data.mk
     mk = _last_n_chars(mk_full, 8)
@@ -731,7 +731,7 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
                         header_preview,
                         width=360,
                         tooltip=tooltips.get("step_viz_receive_header", ""),
-                        full_value=f"dh={_to_text(header_dh_full)}, pn={step_data.header.pn}, n={step_data.header.n}",
+                        full_value=f"dh={_to_text(header_dh_full)}, pn={step_data.header.pn}, n={step_data.header.n + 1}",
                     ),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
@@ -762,10 +762,10 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
         ft.Text("Skipped-message key check", weight="bold"),
         flow_node(
             "Lookup key",
-            f"(dh, n)=({_last_n_chars(header_dh_full, 8)}, {step_data.header.n})",
+            f"(dh, n)=({_last_n_chars(header_dh_full, 8)}, {step_data.header.n + 1})",
             width=300,
             tooltip=tooltips.get("step_viz_receive_skipped_lookup", ""),
-            full_value=f"dh={_to_text(header_dh_full)}, n={step_data.header.n}",
+            full_value=f"dh={_to_text(header_dh_full)}, n={step_data.header.n + 1}",
         ),
         ft.Text("↓", size=24),
         flow_node(
@@ -816,7 +816,7 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
             ft.Text("Sync Nr to header.n", weight="bold"),
             flow_node(
                 "Check correlation",
-                f"Nr: {fast_forward_from_nr}  n: {header_n}",
+                f"Nr: {fast_forward_from_nr}  n: {header_n + 1}",
                 width=300,
                 tooltip=tooltips.get("step_viz_receive_fast_forward", ""),
             ),
@@ -828,7 +828,7 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
                 height=150,
                 tooltip=tooltips.get("step_viz_receive_fast_forward", ""),
                 full_value=(
-                    f"Roll receive chain to n={header_n}.\n"
+                    f"Roll receive chain to n={header_n + 1}.\n"
                     f"Each skipped index derives MK and stores it into MKSKIPPED."
                 ),
             ),

@@ -143,7 +143,7 @@ def build_timeline(
                 ft.Text("|"),
                 build_tooltip_text(
                     "n",
-                    str(n),
+                    str(n + 1),
                     tooltips.get("header_n", ""),
                 ),
             ],
