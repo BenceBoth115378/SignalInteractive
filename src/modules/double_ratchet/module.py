@@ -143,6 +143,7 @@ class DoubleRatchetModule(BaseModule):
         self.session = DoubleRatchetState()
         self.pending_messages: list[dict[str, Any]] = []
         self._next_pending_id = 1
+        self._receive_snapshots: dict[int, ReceiveStepVisualizationSnapshot] = {}
         initialize_session(self.session)
 
     def export_state(self) -> dict:
@@ -257,6 +258,7 @@ class DoubleRatchetModule(BaseModule):
         )
         self.pending_messages = []
         self._next_pending_id = 1
+        self._receive_snapshots = {}
         initialize_session(self.session)
 
     def _build_initializer_switch_warning(self, old_initializer: str, new_initializer: str) -> str:
@@ -346,7 +348,7 @@ class DoubleRatchetModule(BaseModule):
 
         after_snapshot = self._snapshot_party_state(receiver_state)
 
-        return ReceiveStepVisualizationSnapshot(
+        snapshot = ReceiveStepVisualizationSnapshot(
             sender=pending["sender"],
             receiver=pending["receiver"],
             pending_id=pending_id,
@@ -365,6 +367,8 @@ class DoubleRatchetModule(BaseModule):
             before=before_snapshot,
             after=after_snapshot,
         )
+        self._receive_snapshots[pending_id] = snapshot
+        return snapshot
 
     def send_message(
         self,
@@ -490,6 +494,9 @@ class DoubleRatchetModule(BaseModule):
                 on_send_bob=on_send_bob,
                 pending_messages=self.pending_messages,
                 on_receive_pending=on_receive_pending,
+                on_show_receive_visualization=lambda sid: show_receive_step_visualization(
+                    self._receive_snapshots[sid]
+                ) if sid in self._receive_snapshots else None,
             )
 
         def on_send_alice(e) -> None:

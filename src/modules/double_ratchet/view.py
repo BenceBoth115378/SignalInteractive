@@ -65,6 +65,7 @@ def build_timeline(
     page: ft.Page | None = None,
     pending_messages: list[dict] | None = None,
     on_receive_pending=None,
+    on_show_receive_visualization=None,
 ):
     perspective_key = perspective.lower()
     tooltips = get_tooltip_messages("double_ratchet")
@@ -196,10 +197,15 @@ def build_timeline(
             message_line = _resolve_message_line(
                 perspective_key, sender, receiver, cipher_text, plaintext_text, recipient_decrypted
             )
-            row = ft.Row(
-                controls=[ft.Text(f"[{i}] {sender} → {receiver} | Received")],
-                alignment=ft.MainAxisAlignment.START,
-            )
+            row_controls = [ft.Text(f"[{i}] {sender} → {receiver} | Received")]
+            if on_show_receive_visualization is not None:
+                row_controls.append(
+                    ft.TextButton(
+                        "Show steps",
+                        on_click=lambda e, sid=seq_id: on_show_receive_visualization(sid),
+                    )
+                )
+            row = ft.Row(controls=row_controls, alignment=ft.MainAxisAlignment.START)
             col.controls.append(_build_entry_container(row, dh, pn, n, message_line))
 
         else:  # pending
@@ -246,6 +252,7 @@ def build_visual(
     on_send_bob=None,
     pending_messages: list[dict] | None = None,
     on_receive_pending=None,
+    on_show_receive_visualization=None,
 ):
     initializer_party = session.initializer
     responder_party = session.responder
@@ -277,6 +284,7 @@ def build_visual(
         page,
         pending_messages=pending_messages,
         on_receive_pending=on_receive_pending,
+        on_show_receive_visualization=on_show_receive_visualization,
     )
 
     timeline_container = ft.Container(
