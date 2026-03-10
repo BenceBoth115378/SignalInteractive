@@ -24,54 +24,24 @@ def _build_party_panel(
     cks_full = format_key(party.CKs)
     ckr_full = format_key(party.CKr)
 
-    dhs_value = last_n_chars(dhs_public_full, 8) if visible else "Hidden"
-    dhr_value = last_n_chars(dhr_full, 8) if visible else "Hidden"
-    rk_value = last_n_chars(rk_full, 8) if visible else "Hidden"
-    cks_value = last_n_chars(cks_full, 8) if visible else "Hidden"
-    ckr_value = last_n_chars(ckr_full, 8) if visible else "Hidden"
+    def _key_field(label: str, full_value: str, copy_value: str | None = None) -> ft.Control:
+        display = last_n_chars(full_value, 8) if visible else "Hidden"
+        cv = copy_value if copy_value is not None else full_value
+        return build_tooltip_text(
+            label,
+            display,
+            tooltips.get(label, ""),
+            full_value=full_value if visible else None,
+            on_click=make_copy_handler(page, label, cv) if visible else None,
+        )
 
     panel_controls = [
-        ft.Text(
-            header,
-            size=18,
-            weight="bold",
-            text_align=ft.TextAlign.LEFT
-        ),
-        build_tooltip_text(
-            "DHs",
-            dhs_value,
-            tooltips.get("DHs", ""),
-            full_value=dhs_full if visible else None,
-            on_click=make_copy_handler(page, "DHs", dhs_public_full) if visible else None,
-        ),
-        build_tooltip_text(
-            "DHr",
-            dhr_value,
-            tooltips.get("DHr", ""),
-            full_value=dhr_full if visible else None,
-            on_click=make_copy_handler(page, "DHr", dhr_full) if visible else None,
-        ),
-        build_tooltip_text(
-            "RK",
-            rk_value,
-            tooltips.get("RK", ""),
-            full_value=rk_full if visible else None,
-            on_click=make_copy_handler(page, "RK", rk_full) if visible else None,
-        ),
-        build_tooltip_text(
-            "CKs",
-            cks_value,
-            tooltips.get("CKs", ""),
-            full_value=cks_full if visible else None,
-            on_click=make_copy_handler(page, "CKs", cks_full) if visible else None,
-        ),
-        build_tooltip_text(
-            "CKr",
-            ckr_value,
-            tooltips.get("CKr", ""),
-            full_value=ckr_full if visible else None,
-            on_click=make_copy_handler(page, "CKr", ckr_full) if visible else None,
-        ),
+        ft.Text(header, size=18, weight="bold", text_align=ft.TextAlign.LEFT),
+        _key_field("DHs", dhs_full, dhs_public_full),
+        _key_field("DHr", dhr_full),
+        _key_field("RK", rk_full),
+        _key_field("CKs", cks_full),
+        _key_field("CKr", ckr_full),
         build_tooltip_text("Ns", str(party.Ns), tooltips.get("Ns", "")),
         build_tooltip_text("Nr", str(party.Nr), tooltips.get("Nr", "")),
         build_tooltip_text("PN", str(party.PN), tooltips.get("PN", "")),
@@ -79,13 +49,7 @@ def _build_party_panel(
     ]
 
     if message_input is not None and on_send is not None:
-        panel_controls.extend(
-            [
-                ft.Divider(height=12),
-                message_input,
-                ft.Button("Send", on_click=on_send),
-            ]
-        )
+        panel_controls.extend([ft.Divider(height=12), message_input, ft.Button("Send", on_click=on_send)])
 
     return ft.Column(
         panel_controls,
@@ -176,78 +140,84 @@ def build_timeline(
         spacing=6,
     )
 
-    for i, msg in reversed(list(enumerate(session.message_log))):
-        sender = msg.sender
-        receiver = msg.receiver
-
-        if perspective_key not in {"global", "attacker"} and not _is_actor(perspective_key, sender, receiver):
-            continue
-
+    def _resolve_message_line(
+        perspective_key: str,
+        sender: str,
+        receiver: str,
+        cipher_text: str,
+        plaintext_text: str,
+        recipient_decrypted: str = "",
+    ) -> str:
         sender_view = perspective_key == sender.lower()
         recipient_view = perspective_key == receiver.lower()
-        attacker_view = perspective_key == "attacker"
         global_view = perspective_key == "global"
-
-        dh, pn, n = _header_parts(getattr(msg, "header", None))
-        cipher_text = _to_text(msg.cipher)
-        plaintext_text = _to_text(getattr(msg, "plaintext", b""))
-        recipient_decrypted = _to_text(msg.decrypted_by_alice if receiver == "Alice" else msg.decrypted_by_bob)
-
+        attacker_view = perspective_key == "attacker"
+        if attacker_view:
+            return f"message: {cipher_text}"
         if sender_view or global_view:
-            message_line = f"message: {plaintext_text or recipient_decrypted}"
-        elif recipient_view:
-            message_line = f"message: {recipient_decrypted or plaintext_text}"
-        else:
-            message_line = f"message: {cipher_text}"
+            return f"message: {plaintext_text or recipient_decrypted}"
+        if recipient_view:
+            return f"message: {recipient_decrypted or plaintext_text}"
+        return f"message: {cipher_text}"
 
-        row = ft.Row(
-            controls=[ft.Text(f"[{i}] {sender} → {receiver} | Received")],
-            alignment=ft.MainAxisAlignment.START,
-        )
-        header_row = _build_header_row(dh, pn, n)
-
-        col.controls.append(
-            ft.Container(
-                content=ft.Column(
-                    controls=[
-                        row,
-                        header_row,
-                        _build_message_text(message_line),
-                    ],
-                    spacing=2,
-                    tight=True,
-                ),
-                padding=6,
-            )
+    def _build_entry_container(row: ft.Row, dh: str, pn, n, message_line: str) -> ft.Container:
+        return ft.Container(
+            content=ft.Column(
+                controls=[row, _build_header_row(dh, pn, n), _build_message_text(message_line)],
+                spacing=2,
+                tight=True,
+            ),
+            padding=6,
         )
 
+    combined = []
+    for msg in session.message_log:
+        combined.append((msg.seq_id, "received", msg))
     if pending_messages is not None:
-        pending_entries = list(enumerate(pending_messages, start=len(session.message_log)))
-        for i, pending in reversed(pending_entries):
+        for pending in pending_messages:
+            if isinstance(pending.get("id"), int):
+                combined.append((pending["id"], "pending", pending))
+
+    for seq_id, kind, entry in sorted(combined, key=lambda x: x[0], reverse=True):
+        i = seq_id
+        if kind == "received":
+            msg = entry
+            sender = msg.sender
+            receiver = msg.receiver
+
+            if perspective_key not in {"global", "attacker"} and not _is_actor(perspective_key, sender, receiver):
+                continue
+
+            dh, pn, n = _header_parts(getattr(msg, "header", None))
+            cipher_text = _to_text(msg.cipher)
+            plaintext_text = _to_text(getattr(msg, "plaintext", b""))
+            recipient_decrypted = _to_text(msg.decrypted_by_alice if receiver == "Alice" else msg.decrypted_by_bob)
+
+            message_line = _resolve_message_line(
+                perspective_key, sender, receiver, cipher_text, plaintext_text, recipient_decrypted
+            )
+            row = ft.Row(
+                controls=[ft.Text(f"[{i}] {sender} → {receiver} | Received")],
+                alignment=ft.MainAxisAlignment.START,
+            )
+            col.controls.append(_build_entry_container(row, dh, pn, n, message_line))
+
+        else:  # pending
+            pending = entry
             pending_id = pending.get("id")
             sender = pending.get("sender", "?")
             receiver = pending.get("receiver", "?")
-            header = pending.get("header")
-            dh, pn, n = _header_parts(header)
+            dh, pn, n = _header_parts(pending.get("header"))
             cipher_text = _to_text(pending.get("cipher", b""))
             plaintext_text = _to_text(pending.get("plaintext", b""))
-
-            if not isinstance(pending_id, int):
-                continue
 
             if perspective_key not in {"global", "attacker"} and not _is_actor(perspective_key, str(sender), str(receiver)):
                 continue
 
-            sender_view = perspective_key == str(sender).lower()
-            attacker_view = perspective_key == "attacker"
             can_receive = perspective_key == "global" or perspective_key == str(receiver).lower()
-
-            if attacker_view:
-                message_line = f"message: {cipher_text}"
-            elif sender_view or perspective_key == "global":
-                message_line = f"message: {plaintext_text}"
-            else:
-                message_line = f"message: {cipher_text}"
+            message_line = _resolve_message_line(
+                perspective_key, str(sender), str(receiver), cipher_text, plaintext_text
+            )
 
             row_controls = [ft.Text(f"[{i}] {sender} → {receiver} | ")]
             if can_receive and on_receive_pending is not None:
@@ -260,20 +230,8 @@ def build_timeline(
             else:
                 row_controls.append(ft.Text("Pending"))
 
-            col.controls.append(
-                ft.Container(
-                    content=ft.Column(
-                        controls=[
-                            ft.Row(controls=row_controls, alignment=ft.MainAxisAlignment.START),
-                            _build_header_row(dh, pn, n),
-                            _build_message_text(message_line),
-                        ],
-                        spacing=2,
-                        tight=True,
-                    ),
-                    padding=6,
-                )
-            )
+            row = ft.Row(controls=row_controls, alignment=ft.MainAxisAlignment.START)
+            col.controls.append(_build_entry_container(row, dh, pn, n, message_line))
 
     return col
 

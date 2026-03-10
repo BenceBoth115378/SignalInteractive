@@ -93,6 +93,7 @@ class MessageState:
     decrypted_by_alice: bytes = b""
     header: Header | None = None
     plaintext: bytes = b""
+    seq_id: int = 0
 
 
 @dataclass

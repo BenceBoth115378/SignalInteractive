@@ -107,6 +107,7 @@ def _serialize_message(message: MessageState) -> dict:
         "decrypted_by_bob": _encode_bytes(message.decrypted_by_bob),
         "decrypted_by_alice": _encode_bytes(message.decrypted_by_alice),
         "plaintext": _encode_bytes(message.plaintext),
+        "seq_id": message.seq_id,
     }
 
 
@@ -133,6 +134,7 @@ def _deserialize_message(data: dict) -> MessageState:
         decrypted_by_alice=_decode_bytes(data.get("decrypted_by_alice", "")),
         header=header,
         plaintext=plaintext,
+        seq_id=data.get("seq_id", 0),
     )
 
 
@@ -218,8 +220,9 @@ class DoubleRatchetModule(BaseModule):
                 }
             )
 
-        max_pending_id = max((item["id"] for item in self.pending_messages), default=0)
-        self._next_pending_id = max_pending_id + 1
+        max_log_seq_id = max((msg.seq_id for msg in self.session.message_log), default=0)
+        max_pending_seq_id = max((item["id"] for item in self.pending_messages), default=0)
+        self._next_pending_id = max(max_log_seq_id, max_pending_seq_id) + 1
 
     def _build_hint_message(self, sender: str) -> str:
         sender_key = sender.lower()
@@ -336,6 +339,7 @@ class DoubleRatchetModule(BaseModule):
                 decrypted_by_alice=decrypted if recipient_name == "Alice" else b"",
                 header=header,
                 plaintext=pending.get("plaintext", b"") or decrypted,
+                seq_id=pending_id,
             )
         )
         self.pending_messages = [item for item in self.pending_messages if item["id"] != pending_id]
