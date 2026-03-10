@@ -773,9 +773,6 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
             "FOUND" if skipped_key_hit else "NOT FOUND",
             width=220,
             tooltip=tooltips.get("step_viz_receive_skipped_check", ""),
-            bgcolor=ft.Colors.TERTIARY_CONTAINER if skipped_key_hit else ft.Colors.SECONDARY_CONTAINER,
-            text_color=ft.Colors.ON_TERTIARY_CONTAINER if skipped_key_hit else ft.Colors.ON_SECONDARY_CONTAINER,
-            border_color=ft.Colors.OUTLINE,
         ),
         ft.Text("↓", size=24),
         flow_node(
@@ -805,8 +802,8 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
                 "DH ratchet needed" if dh_ratchet_needed else "No DH ratchet needed",
                 width=250,
                 tooltip=tooltips.get("step_viz_receive_ratchet_decision", ""),
-                bgcolor=ft.Colors.ERROR_CONTAINER if dh_ratchet_needed else ft.Colors.TERTIARY_CONTAINER,
-                text_color=ft.Colors.ON_ERROR_CONTAINER if dh_ratchet_needed else ft.Colors.ON_TERTIARY_CONTAINER,
+                bgcolor=ft.Colors.SECONDARY_CONTAINER if dh_ratchet_needed else ft.Colors.TERTIARY_CONTAINER,
+                text_color=ft.Colors.ON_SECONDARY_CONTAINER if dh_ratchet_needed else ft.Colors.ON_TERTIARY_CONTAINER,
                 border_color=ft.Colors.OUTLINE,
             ),
         ],
@@ -826,16 +823,14 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
             ft.Text("↓", size=24),
             flow_node(
                 "SkipMessageKeys(state, n)",
-                f"save MKSKIPPED: {fast_forward_count}\nNr: {fast_forward_from_nr} -> {fast_forward_to_nr}",
+                f"save MKSKIPPED: {fast_forward_count}\nNr: {fast_forward_from_nr} -> {fast_forward_to_nr}\nCKr: {ckr_before_kdf_ck}",
                 width=340,
+                height=150,
                 tooltip=tooltips.get("step_viz_receive_fast_forward", ""),
                 full_value=(
                     f"Roll receive chain to n={header_n}.\n"
                     f"Each skipped index derives MK and stores it into MKSKIPPED."
                 ),
-                bgcolor=ft.Colors.PRIMARY_CONTAINER,
-                text_color=ft.Colors.ON_PRIMARY_CONTAINER,
-                border_color=ft.Colors.OUTLINE,
             ),
         ],
         spacing=6,
@@ -911,30 +906,35 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
             ),
             ft.Text("↓", size=24),
             flow_node(
-                "Sync Nr to header.pn",
-                f"SkipMessageKeys(state, pn)\nsave MKSKIPPED: {pn_fast_forward_count}\nNr: {pn_fast_forward_from_nr} -> {pn_fast_forward_to_nr}",
-                width=320,
-                height=110,
-                tooltip=tooltips.get("step_viz_receive_fast_forward", ""),
-                full_value=(
-                    f"Checks if current Nr correlates with header.pn={header_pn}.\n"
-                    f"If not, receive chain is rolled forward and skipped MKs are stored."
+                "Complete old receiving chain",
+                (
+                    f"header.pn={header_pn}, Nr={pn_fast_forward_from_nr}\n"
+                    f"In-transit msgs: {pn_fast_forward_count}\n"
+                    f"Saving MKs: Nr {pn_fast_forward_from_nr} -> {pn_fast_forward_to_nr}"
+                    if pn_fast_forward_count > 0
+                    else f"header.pn={header_pn}, Nr={pn_fast_forward_from_nr}\nAll msgs received, nothing to skip"
                 ),
-                bgcolor=ft.Colors.PRIMARY_CONTAINER,
-                text_color=ft.Colors.ON_PRIMARY_CONTAINER,
-                border_color=ft.Colors.OUTLINE,
+                width=340,
+                height=120,
+                tooltip=tooltips.get("step_viz_receive_complete_old_chain", ""),
+                full_value=(
+                    f"header.pn={header_pn}, Nr={pn_fast_forward_from_nr}\n"
+                    f"In-transit messages: {pn_fast_forward_count}\n"
+                    f"Saving MKs: Nr {pn_fast_forward_from_nr} -> {pn_fast_forward_to_nr}"
+                    if pn_fast_forward_count > 0
+                    else
+                    f"header.pn={header_pn}, Nr={pn_fast_forward_from_nr}\n"
+                    f"All messages from the previous chain were received — nothing to skip."
+                ),
             ),
             ft.Text("↓", size=24),
             flow_node(
                 "Set DHr",
-                f"DHr <- header.dh\n{before_dhr} -> {_last_n_chars(header_dh_full, 8)}",
+                f"Header.dh -> DHr\n{before_dhr} -> {_last_n_chars(header_dh_full, 8)}",
                 width=320,
                 height=110,
-                tooltip=tooltips.get("step_viz_receive_after_dhr", ""),
+                tooltip=tooltips.get("step_viz_receive_set_dhr", ""),
                 full_value=f"old DHr: {_to_text(before_dhr_full)}\nnew DHr: {_to_text(header_dh_full)}",
-                bgcolor=ft.Colors.PRIMARY_CONTAINER,
-                text_color=ft.Colors.ON_PRIMARY_CONTAINER,
-                border_color=ft.Colors.OUTLINE,
             ),
             ft.Text("↓", size=24),
             flow_node(
@@ -942,25 +942,19 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
                 f"input RK: {before_rk}\noutput CKr: {ckr_after_double_ratchet}",
                 width=320,
                 height=110,
-                tooltip=tooltips.get("step_viz_receive_dh_ratchet_apply", ""),
+                tooltip=tooltips.get("step_viz_receive_kdf_rk_1", ""),
                 full_value=(
                     f"DH input uses sender current public DH from header and our previous private DH.\n"
                     f"RK before: {_to_text(before_rk_full)}\n"
                     f"CKr after 1st KDF_RK: {_to_text(ckr_after_double_ratchet_full)}"
                 ),
-                bgcolor=ft.Colors.PRIMARY_CONTAINER,
-                text_color=ft.Colors.ON_PRIMARY_CONTAINER,
-                border_color=ft.Colors.OUTLINE,
             ),
             ft.Text("↓", size=24),
             flow_node(
                 "Set Nr",
                 "Nr <- 0",
                 width=220,
-                tooltip=tooltips.get("step_viz_receive_dh_ratchet_apply", ""),
-                bgcolor=ft.Colors.PRIMARY_CONTAINER,
-                text_color=ft.Colors.ON_PRIMARY_CONTAINER,
-                border_color=ft.Colors.OUTLINE,
+                tooltip=tooltips.get("step_viz_receive_set_nr_zero", ""),
             ),
             ft.Text("↓", size=24),
             flow_node(
@@ -970,9 +964,6 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
                 height=100,
                 tooltip=tooltips.get("step_viz_receive_dh_ratchet_after_dhs", ""),
                 full_value=f"old DHs: {_to_text(before_dhs_full)}\nnew DHs: {_to_text(after_dhs_full)}",
-                bgcolor=ft.Colors.PRIMARY_CONTAINER,
-                text_color=ft.Colors.ON_PRIMARY_CONTAINER,
-                border_color=ft.Colors.OUTLINE,
             ),
             ft.Text("↓", size=24),
             flow_node(
@@ -980,15 +971,12 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
                 f"output CKs: {after_cks}\nRK now: {after_rk}",
                 width=320,
                 height=110,
-                tooltip=tooltips.get("step_viz_receive_dh_ratchet_apply", ""),
+                tooltip=tooltips.get("step_viz_receive_kdf_rk_2", ""),
                 full_value=(
                     f"DH input uses sender current public DH and our new private DH.\n"
                     f"RK after ratchet: {_to_text(after_rk_full)}\n"
                     f"CKs after 2nd KDF_RK: {_to_text(after_cks_full)}"
                 ),
-                bgcolor=ft.Colors.PRIMARY_CONTAINER,
-                text_color=ft.Colors.ON_PRIMARY_CONTAINER,
-                border_color=ft.Colors.OUTLINE,
             ),
             ft.Text("↓", size=24),
             ft.Row(

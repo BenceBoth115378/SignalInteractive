@@ -24,7 +24,7 @@ def build_tooltip_text(
         if message_parts:
             message_parts.append("\n────────────\n")
         normalized_full_value = str(full_value).replace("\\n", "\n")
-        message_parts.append(f"Key value:\n{normalized_full_value}")
+        message_parts.append(f"Full value:\n{normalized_full_value}")
 
     message = "".join(message_parts)
 
