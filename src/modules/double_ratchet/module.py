@@ -447,6 +447,14 @@ class DoubleRatchetModule(BaseModule):
             initializer_switch_warning=initializer_switch_warning,
         )
 
+    def _auto_receive_all_pending(self) -> None:
+        for pending in self.pending_messages:
+            pending_id = pending.get("id")
+            recipient = pending.get("receiver")
+            if not isinstance(pending_id, int) or not isinstance(recipient, str):
+                continue
+            self.receive_message(recipient, pending_id)
+
     def build(self, page, app_state):
         message_count = ft.Text(f"Messages exchanged: {len(self.session.message_log)}")
         send_step_visualization_checkbox = ft.Checkbox(label="Show sending ratchet step visualization", value=False)
@@ -481,6 +489,8 @@ class DoubleRatchetModule(BaseModule):
             show_receiving_step_visualization_dialog(page, step_data)
 
         def refresh_view() -> None:
+            if app_state.perspective == "attacker" and self.pending_messages:
+                self._auto_receive_all_pending()
             message_count.value = f"Messages exchanged: {len(self.session.message_log)}"
             alice_input.hint_text = self._build_hint_message("alice")
             bob_input.hint_text = self._build_hint_message("bob")
@@ -510,6 +520,8 @@ class DoubleRatchetModule(BaseModule):
                 show_warning(str(exc))
                 return
             alice_input.value = ""
+            if app_state.perspective == "attacker" and step_data is not None:
+                self.receive_message(step_data.receiver, step_data.pending_id)
             refresh_view()
             page.update()
             warning_message = step_data.initializer_switch_warning if step_data is not None else None
@@ -529,6 +541,8 @@ class DoubleRatchetModule(BaseModule):
                 show_warning(str(exc))
                 return
             bob_input.value = ""
+            if app_state.perspective == "attacker" and step_data is not None:
+                self.receive_message(step_data.receiver, step_data.pending_id)
             refresh_view()
             page.update()
             warning_message = step_data.initializer_switch_warning if step_data is not None else None
