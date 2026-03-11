@@ -21,6 +21,7 @@ from modules.double_ratchet.step_visualization import (
     show_receiving_step_visualization_dialog,
     show_sending_step_visualization_dialog,
 )
+from modules.double_ratchet.attacker_dashboard import build_attacker_dashboard, get_attacker_analysis
 from modules.double_ratchet.view import build_visual
 from components.data_classes import PartyState
 
@@ -144,6 +145,7 @@ class DoubleRatchetModule(BaseModule):
         self.pending_messages: list[dict[str, Any]] = []
         self._next_pending_id = 1
         self._receive_snapshots: dict[int, ReceiveStepVisualizationSnapshot] = {}
+        self._attacker_compromised_secrets: dict[str, dict[str, Any]] = {}
         initialize_session(self.session)
 
     def export_state(self) -> dict:
@@ -455,7 +457,7 @@ class DoubleRatchetModule(BaseModule):
                 continue
             self.receive_message(recipient, pending_id)
 
-    def build(self, page, app_state):
+    def build(self, page, app_state, perspective_selector: ft.Control | None = None):
         message_count = ft.Text(f"Messages exchanged: {len(self.session.message_log)}")
         send_step_visualization_checkbox = ft.Checkbox(label="Show sending ratchet step visualization", value=False)
         receive_step_visualization_checkbox = ft.Checkbox(label="Show receiving ratchet step visualization", value=False)
@@ -494,6 +496,19 @@ class DoubleRatchetModule(BaseModule):
             message_count.value = f"Messages exchanged: {len(self.session.message_log)}"
             alice_input.hint_text = self._build_hint_message("alice")
             bob_input.hint_text = self._build_hint_message("bob")
+            attacker_dashboard = build_attacker_dashboard(
+                page,
+                self.session,
+                self.pending_messages,
+                self._attacker_compromised_secrets,
+                lambda value: setattr(self, "_attacker_compromised_secrets", value),
+                refresh_view,
+            )
+            attacker_analysis = get_attacker_analysis(
+                self.session,
+                self.pending_messages,
+                self._attacker_compromised_secrets,
+            )
             visual_container.content = build_visual(
                 self.session,
                 app_state.perspective,
@@ -507,6 +522,8 @@ class DoubleRatchetModule(BaseModule):
                 on_show_receive_visualization=lambda sid: show_receive_step_visualization(
                     self._receive_snapshots[sid]
                 ) if sid in self._receive_snapshots else None,
+                attacker_dashboard=attacker_dashboard,
+                attacker_analysis=attacker_analysis,
             )
 
         def on_send_alice(e) -> None:
@@ -558,6 +575,12 @@ class DoubleRatchetModule(BaseModule):
             if receive_step_visualization_checkbox.value and step_data is not None:
                 show_receive_step_visualization(step_data)
 
+        def on_reset_module(e) -> None:
+            self._reset_session_with_initializer("alice")
+            self._attacker_compromised_secrets.clear()
+            refresh_view()
+            page.update()
+
         refresh_view()
 
         return ft.Column(
@@ -576,7 +599,15 @@ class DoubleRatchetModule(BaseModule):
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
-                message_count,
+                ft.Row(
+                    controls=[
+                        message_count,
+                        perspective_selector if perspective_selector is not None else ft.Container(expand=True),
+                        ft.TextButton("Reset application", on_click=on_reset_module),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
                 visual_container,
             ],
             expand=True,

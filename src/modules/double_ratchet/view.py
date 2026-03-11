@@ -66,6 +66,7 @@ def build_timeline(
     pending_messages: list[dict] | None = None,
     on_receive_pending=None,
     on_show_receive_visualization=None,
+    attacker_analysis: list[dict] | None = None,
 ):
     perspective_key = perspective.lower()
     tooltips = get_tooltip_messages("double_ratchet")
@@ -161,7 +162,7 @@ def build_timeline(
             return f"message: {recipient_decrypted or plaintext_text}"
         return f"message: {cipher_text}"
 
-    def _build_entry_container(row: ft.Row, dh: str, pn, n, message_line: str) -> ft.Container:
+    def _build_entry_container(row: ft.Row, dh: str, pn, n, message_line: str, border: ft.Border | None = None, bgcolor: str | None = None) -> ft.Container:
         return ft.Container(
             content=ft.Column(
                 controls=[row, _build_header_row(dh, pn, n), _build_message_text(message_line)],
@@ -169,18 +170,28 @@ def build_timeline(
                 tight=True,
             ),
             padding=6,
+            border=border,
+            bgcolor=bgcolor,
+            border_radius=5,
         )
 
     combined = []
     for msg in session.message_log:
         combined.append((msg.seq_id, "received", msg))
-    if pending_messages is not None:
+    if pending_messages is not None and perspective_key != "attacker":
         for pending in pending_messages:
             if isinstance(pending.get("id"), int):
                 combined.append((pending["id"], "pending", pending))
 
+    attacker_results = {}
+    if perspective_key == "attacker" and attacker_analysis:
+        for a in attacker_analysis:
+            attacker_results[(a["id"], a["state"])] = a
+
     for seq_id, kind, entry in sorted(combined, key=lambda x: x[0], reverse=True):
         i = seq_id
+        border = None
+        bgcolor = None
         if kind == "received":
             msg = entry
             sender = msg.sender
@@ -197,16 +208,27 @@ def build_timeline(
             message_line = _resolve_message_line(
                 perspective_key, sender, receiver, cipher_text, plaintext_text, recipient_decrypted
             )
+
+            if perspective_key == "attacker":
+                analysis = attacker_results.get((i, "received"))
+                if analysis:
+                    if analysis["decryptable"]:
+                        message_line = f"message (decrypted): {analysis['plaintext']}"
+                        border = ft.Border.all(1, ft.Colors.GREEN)
+                        bgcolor = ft.Colors.GREEN_ACCENT_100
+                    else:
+                        border = ft.Border.all(1, ft.Colors.YELLOW)
+                        bgcolor = ft.Colors.YELLOW_ACCENT_100
             row_controls = [ft.Text(f"[{i}] {sender} → {receiver} | Received")]
             if on_show_receive_visualization is not None:
                 row_controls.append(
                     ft.TextButton(
                         "Show steps",
                         on_click=lambda e, sid=seq_id: on_show_receive_visualization(sid),
-                    )
+                    ) if perspective_key != "attacker" else ft.Text("Show steps")
                 )
             row = ft.Row(controls=row_controls, alignment=ft.MainAxisAlignment.START)
-            col.controls.append(_build_entry_container(row, dh, pn, n, message_line))
+            col.controls.append(_build_entry_container(row, dh, pn, n, message_line, border, bgcolor))
 
         else:  # pending
             pending = entry
@@ -237,7 +259,7 @@ def build_timeline(
                 row_controls.append(ft.Text("Pending"))
 
             row = ft.Row(controls=row_controls, alignment=ft.MainAxisAlignment.START)
-            col.controls.append(_build_entry_container(row, dh, pn, n, message_line))
+            col.controls.append(_build_entry_container(row, dh, pn, n, message_line, border, bgcolor))
 
     return col
 
@@ -253,6 +275,8 @@ def build_visual(
     pending_messages: list[dict] | None = None,
     on_receive_pending=None,
     on_show_receive_visualization=None,
+    attacker_dashboard: ft.Control | None = None,
+    attacker_analysis: list[dict] | None = None,
 ):
     initializer_party = session.initializer
     responder_party = session.responder
@@ -285,6 +309,7 @@ def build_visual(
         pending_messages=pending_messages,
         on_receive_pending=on_receive_pending,
         on_show_receive_visualization=on_show_receive_visualization,
+        attacker_analysis=attacker_analysis,
     )
 
     timeline_container = ft.Container(
@@ -293,7 +318,7 @@ def build_visual(
         padding=10,
     )
 
-    return ft.Row(
+    top_row = ft.Row(
         [
             ft.Container(
                 ft.Column([initializer_panel], spacing=10, tight=True),
@@ -307,4 +332,17 @@ def build_visual(
         ],
         expand=True,
         vertical_alignment=ft.CrossAxisAlignment.START,
+    )
+
+    if attacker_dashboard is None:
+        return top_row
+
+    return ft.Column(
+        controls=[
+            top_row,
+            ft.Divider(height=1),
+            attacker_dashboard,
+        ],
+        expand=True,
+        spacing=6,
     )
