@@ -1,7 +1,6 @@
 import flet as ft
 from components.data_classes import AppState
 from components.router import Router
-from components.navigation import build_navigation
 from components.startup_prompt import build_startup_prompt
 from components.persistence import clear_state, has_saved_state, load_state, save_state
 from components.session_payload import apply_payload, serialize_payload
@@ -9,9 +8,18 @@ from components.session_payload import apply_payload, serialize_payload
 
 def main(page: ft.Page):
     page.title = "Signal Protocol"
-    page.window_width = 1100
-    page.window_height = 850
     page.scroll = "auto"
+
+    if hasattr(page, "window") and page.window is not None:
+        page.window.width = 1600
+        page.window.height = 980
+        page.window.min_width = 1400
+        page.window.min_height = 900
+    else:
+        if hasattr(page, "window_width"):
+            page.window_width = 1600
+        if hasattr(page, "window_height"):
+            page.window_height = 980
 
     app_state = AppState()
     router = Router()
@@ -52,22 +60,31 @@ def main(page: ft.Page):
             return
 
         module = router.get_current_module(app_state)
-        content = module.build(page, app_state)
 
-        menu_row = ft.Row(
-            controls=[
-                ft.TextButton("Reset application", on_click=lambda e: _reset_application()),
-            ],
-            alignment=ft.MainAxisAlignment.END,
+        def _on_perspective_change(e):
+            app_state.perspective = e.control.value
+            refresh()
+
+        perspective_selector = ft.RadioGroup(
+            value=app_state.perspective,
+            content=ft.Row(
+                controls=[
+                    ft.Radio(value="global", label="Global"),
+                    ft.Radio(value="alice", label="Alice"),
+                    ft.Radio(value="bob", label="Bob"),
+                    ft.Radio(value="attacker", label="Attacker"),
+                ],
+                spacing=10,
+            ),
+            on_change=_on_perspective_change,
         )
 
-        navigation = build_navigation(
-            page, app_state, router, refresh
+        content = module.build(
+            page,
+            app_state,
+            perspective_selector=perspective_selector,
         )
-
-        main_container.controls.append(menu_row)
         main_container.controls.append(content)
-        main_container.controls.append(navigation)
 
         page.update()
         _persist_runtime_state()
@@ -75,10 +92,6 @@ def main(page: ft.Page):
     def _start_new(e):
         _reset_application_state()
 
-        refresh()
-
-    def _reset_application() -> None:
-        _reset_application_state()
         refresh()
 
     def _load_saved(e):
