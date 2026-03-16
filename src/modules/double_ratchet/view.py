@@ -65,6 +65,7 @@ def build_timeline(
     page: ft.Page | None = None,
     pending_messages: list[dict] | None = None,
     on_receive_pending=None,
+    on_show_send_visualization=None,
     on_show_receive_visualization=None,
     attacker_analysis: list[dict] | None = None,
 ):
@@ -220,12 +221,26 @@ def build_timeline(
                         border = ft.Border.all(1, ft.Colors.YELLOW)
                         bgcolor = ft.Colors.YELLOW_ACCENT_100
             row_controls = [ft.Text(f"[{i}] {sender} → {receiver} | Received")]
-            if on_show_receive_visualization is not None:
+            sender_view = perspective_key == sender.lower()
+            receiver_view = perspective_key == receiver.lower()
+            global_view = perspective_key == "global"
+
+            show_send_option = (global_view or sender_view) and perspective_key != "attacker"
+            show_receive_option = (global_view or receiver_view) and perspective_key != "attacker"
+
+            if show_send_option and on_show_send_visualization is not None:
                 row_controls.append(
                     ft.TextButton(
-                        "Show steps",
+                        "Show sending steps",
+                        on_click=lambda e, sid=seq_id: on_show_send_visualization(sid),
+                    )
+                )
+            if show_receive_option and on_show_receive_visualization is not None:
+                row_controls.append(
+                    ft.TextButton(
+                        "Show receiving steps",
                         on_click=lambda e, sid=seq_id: on_show_receive_visualization(sid),
-                    ) if perspective_key != "attacker" else ft.Text("Show steps")
+                    )
                 )
             row = ft.Row(controls=row_controls, alignment=ft.MainAxisAlignment.START)
             col.controls.append(_build_entry_container(row, dh, pn, n, message_line, border, bgcolor))
@@ -274,6 +289,7 @@ def build_visual(
     on_send_bob=None,
     pending_messages: list[dict] | None = None,
     on_receive_pending=None,
+    on_show_send_visualization=None,
     on_show_receive_visualization=None,
     attacker_dashboard: ft.Control | None = None,
     attacker_analysis: list[dict] | None = None,
@@ -308,6 +324,7 @@ def build_visual(
         page,
         pending_messages=pending_messages,
         on_receive_pending=on_receive_pending,
+        on_show_send_visualization=on_show_send_visualization,
         on_show_receive_visualization=on_show_receive_visualization,
         attacker_analysis=attacker_analysis,
     )

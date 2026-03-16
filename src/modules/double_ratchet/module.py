@@ -144,6 +144,7 @@ class DoubleRatchetModule(BaseModule):
         self.session = DoubleRatchetState()
         self.pending_messages: list[dict[str, Any]] = []
         self._next_pending_id = 1
+        self._send_snapshots: dict[int, SendStepVisualizationSnapshot] = {}
         self._receive_snapshots: dict[int, ReceiveStepVisualizationSnapshot] = {}
         self._attacker_compromised_secrets: dict[str, dict[str, Any]] = {}
         self._initial_warning_shown = False
@@ -261,6 +262,7 @@ class DoubleRatchetModule(BaseModule):
         )
         self.pending_messages = []
         self._next_pending_id = 1
+        self._send_snapshots = {}
         self._receive_snapshots = {}
         initialize_session(self.session)
 
@@ -460,6 +462,7 @@ class DoubleRatchetModule(BaseModule):
         message_count = ft.Text(f"Messages exchanged: {len(self.session.message_log)}")
         send_step_visualization_checkbox = ft.Checkbox(label="Show sending ratchet step visualization", value=False)
         receive_step_visualization_checkbox = ft.Checkbox(label="Show receiving ratchet step visualization", value=False)
+        auto_receive_checkbox = ft.Checkbox(label="Auto receive", value=False)
         alice_input = ft.TextField(dense=True, expand=True)
         bob_input = ft.TextField(dense=True, expand=True)
         visual_container = ft.Container(expand=True)
@@ -489,9 +492,20 @@ class DoubleRatchetModule(BaseModule):
         def show_receive_step_visualization(step_data: ReceiveStepVisualizationSnapshot) -> None:
             show_receiving_step_visualization_dialog(page, step_data)
 
-        def refresh_view() -> None:
-            if app_state.perspective == "attacker" and self.pending_messages:
+        def _should_auto_receive() -> bool:
+            return app_state.perspective == "attacker" or bool(auto_receive_checkbox.value)
+
+        def _auto_receive_if_enabled(step_data: SendStepVisualizationSnapshot | None = None) -> None:
+            if not _should_auto_receive():
+                return
+            if step_data is not None:
+                self.receive_message(step_data.receiver, step_data.pending_id)
+                return
+            if self.pending_messages:
                 self._auto_receive_all_pending()
+
+        def refresh_view() -> None:
+            _auto_receive_if_enabled()
             message_count.value = f"Messages exchanged: {len(self.session.message_log)}"
             alice_input.hint_text = self._build_hint_message("alice")
             bob_input.hint_text = self._build_hint_message("bob")
@@ -521,6 +535,9 @@ class DoubleRatchetModule(BaseModule):
                 on_send_bob=on_send_bob,
                 pending_messages=self.pending_messages,
                 on_receive_pending=on_receive_pending,
+                on_show_send_visualization=lambda sid: show_step_visualization(
+                    self._send_snapshots[sid]
+                ) if sid in self._send_snapshots else None,
                 on_show_receive_visualization=lambda sid: show_receive_step_visualization(
                     self._receive_snapshots[sid]
                 ) if sid in self._receive_snapshots else None,
@@ -539,13 +556,14 @@ class DoubleRatchetModule(BaseModule):
                 show_warning(str(exc))
                 return
             alice_input.value = ""
-            if app_state.perspective == "attacker" and step_data is not None:
-                self.receive_message(step_data.receiver, step_data.pending_id)
+            _auto_receive_if_enabled(step_data)
             refresh_view()
             page.update()
             warning_message = step_data.initializer_switch_warning if step_data is not None else None
             if warning_message:
                 show_warning(warning_message)
+            if step_data is not None:
+                self._send_snapshots[step_data.pending_id] = step_data
             if send_step_visualization_checkbox.value and step_data is not None and not warning_message:
                 show_step_visualization(step_data)
 
@@ -560,13 +578,14 @@ class DoubleRatchetModule(BaseModule):
                 show_warning(str(exc))
                 return
             bob_input.value = ""
-            if app_state.perspective == "attacker" and step_data is not None:
-                self.receive_message(step_data.receiver, step_data.pending_id)
+            _auto_receive_if_enabled(step_data)
             refresh_view()
             page.update()
             warning_message = step_data.initializer_switch_warning if step_data is not None else None
             if warning_message:
                 show_warning(warning_message)
+            if step_data is not None:
+                self._send_snapshots[step_data.pending_id] = step_data
             if send_step_visualization_checkbox.value and step_data is not None and not warning_message:
                 show_step_visualization(step_data)
 
@@ -584,6 +603,12 @@ class DoubleRatchetModule(BaseModule):
             page.update()
             show_warning(self._build_initializer_switch_warning("", ""))
 
+        def on_auto_receive_changed(e) -> None:
+            refresh_view()
+            page.update()
+
+        auto_receive_checkbox.on_change = on_auto_receive_changed
+
         refresh_view()
         if not self._initial_warning_shown:
             show_warning(self._build_initializer_switch_warning("", ""))
@@ -598,6 +623,7 @@ class DoubleRatchetModule(BaseModule):
                             controls=[
                                 send_step_visualization_checkbox,
                                 receive_step_visualization_checkbox,
+                                auto_receive_checkbox,
                             ],
                             spacing=16,
                         ),
