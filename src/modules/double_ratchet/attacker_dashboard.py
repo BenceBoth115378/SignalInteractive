@@ -355,5 +355,5 @@ def build_attacker_dashboard(
         padding=10,
         border=ft.Border.all(color=ft.Colors.OUTLINE),
         border_radius=8,
-        height=530,
+        height=330,
     )

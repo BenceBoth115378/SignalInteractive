@@ -146,6 +146,7 @@ class DoubleRatchetModule(BaseModule):
         self._next_pending_id = 1
         self._receive_snapshots: dict[int, ReceiveStepVisualizationSnapshot] = {}
         self._attacker_compromised_secrets: dict[str, dict[str, Any]] = {}
+        self._initial_warning_shown = False
         initialize_session(self.session)
 
     def export_state(self) -> dict:
@@ -264,11 +265,9 @@ class DoubleRatchetModule(BaseModule):
         initialize_session(self.session)
 
     def _build_initializer_switch_warning(self, old_initializer: str, new_initializer: str) -> str:
-        return (
-            f"Initializer switched from {old_initializer} to {new_initializer}. "
-            "This simulation now assumes both parties (at least the sender) already know each other's "
-            "public DH key and share an initial secret."
-        )
+        template = f"Session initializer switched from {old_initializer} to {new_initializer}.\n" if old_initializer and new_initializer else ""
+        assumption = "This simulation now assumes both parties (at least the sender) already know each other's public DH key and share an initial secret."
+        return template + assumption
 
     def _initializer_sent_count(self) -> int:
         initializer_name = self.session.initializer.name
@@ -496,19 +495,22 @@ class DoubleRatchetModule(BaseModule):
             message_count.value = f"Messages exchanged: {len(self.session.message_log)}"
             alice_input.hint_text = self._build_hint_message("alice")
             bob_input.hint_text = self._build_hint_message("bob")
-            attacker_dashboard = build_attacker_dashboard(
-                page,
-                self.session,
-                self.pending_messages,
-                self._attacker_compromised_secrets,
-                lambda value: setattr(self, "_attacker_compromised_secrets", value),
-                refresh_view,
-            )
-            attacker_analysis = get_attacker_analysis(
-                self.session,
-                self.pending_messages,
-                self._attacker_compromised_secrets,
-            )
+            attacker_dashboard = None
+            attacker_analysis = None
+            if app_state.perspective == "attacker":
+                attacker_dashboard = build_attacker_dashboard(
+                    page,
+                    self.session,
+                    self.pending_messages,
+                    self._attacker_compromised_secrets,
+                    lambda value: setattr(self, "_attacker_compromised_secrets", value),
+                    refresh_view,
+                )
+                attacker_analysis = get_attacker_analysis(
+                    self.session,
+                    self.pending_messages,
+                    self._attacker_compromised_secrets,
+                )
             visual_container.content = build_visual(
                 self.session,
                 app_state.perspective,
@@ -580,8 +582,12 @@ class DoubleRatchetModule(BaseModule):
             self._attacker_compromised_secrets.clear()
             refresh_view()
             page.update()
+            show_warning(self._build_initializer_switch_warning("", ""))
 
         refresh_view()
+        if not self._initial_warning_shown:
+            show_warning(self._build_initializer_switch_warning("", ""))
+            self._initial_warning_shown = True
 
         return ft.Column(
             controls=[
