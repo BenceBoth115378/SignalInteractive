@@ -46,31 +46,149 @@ def _tooltip_with_full_value(message: str | None, full_value: Any = None) -> str
     return "".join(parts)
 
 
-def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVisualizationSnapshot) -> None:
-    tooltips = get_tooltip_messages("double_ratchet")
+def _safe_dimension(value: Any, fallback: int) -> int:
+    if isinstance(value, (int, float)) and value > 0:
+        return int(value)
+    return fallback
 
+
+def _page_size(page: ft.Page) -> tuple[int, int]:
+    width = getattr(page, "width", None)
+    height = getattr(page, "height", None)
+    window = getattr(page, "window", None)
+
+    if width is None and window is not None:
+        width = getattr(window, "width", None)
+    if height is None and window is not None:
+        height = getattr(window, "height", None)
+
+    return _safe_dimension(width, 1100), _safe_dimension(height, 760)
+
+
+def _with_tooltip(control: ft.Control, message: str | None, full_value: Any = None) -> ft.Control:
+    tooltip_message = _tooltip_with_full_value(message, full_value)
+    if tooltip_message:
+        return ft.Container(
+            content=control,
+            tooltip=ft.Tooltip(message=tooltip_message, prefer_below=False),
+            padding=0,
+        )
+    return control
+
+
+def _flow_node(
+    label: str,
+    value: str | None = None,
+    circle: bool = False,
+    width: int = 170,
+    height: int = 90,
+    tooltip: str | None = None,
+    full_value: Any = None,
+    bgcolor: str | None = None,
+    text_color: str | None = None,
+    border_color: str | None = None,
+) -> ft.Control:
+    controls = [ft.Text(label, weight="bold", text_align=ft.TextAlign.CENTER, color=text_color)]
+    if value:
+        controls.append(ft.Text(value, text_align=ft.TextAlign.CENTER, color=text_color))
+
+    node = ft.Container(
+        content=ft.Column(
+            controls=controls,
+            spacing=4,
+            tight=True,
+            expand=True,
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        width=width,
+        height=height,
+        padding=10,
+        bgcolor=bgcolor,
+        border=ft.Border.all(color=border_color) if border_color is not None else ft.Border.all(),
+        border_radius=45 if circle else 8,
+    )
+    return _with_tooltip(node, tooltip, full_value)
+
+
+def _state_row(
+    label: str,
+    value: str,
+    tooltip: str | None = None,
+    full_value: Any = None,
+    highlight: bool = False,
+) -> ft.Control:
+    row = ft.Row(
+        controls=[
+            ft.Text(
+                f"{label}:",
+                weight="bold",
+                color=ft.Colors.ON_PRIMARY_CONTAINER if highlight else None,
+            ),
+            ft.Text(
+                value,
+                weight=ft.FontWeight.W_600 if highlight else None,
+                color=ft.Colors.ON_PRIMARY_CONTAINER if highlight else None,
+            ),
+        ],
+        spacing=8,
+        wrap=True,
+    )
+    row_control: ft.Control = row
+    if highlight:
+        row_control = ft.Container(
+            content=row,
+            padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+            border_radius=6,
+            bgcolor=ft.Colors.PRIMARY_CONTAINER,
+        )
+    return _with_tooltip(row_control, tooltip, full_value)
+
+
+def _party_state_panel(
+    title: str,
+    rows: list[tuple[str, str, str | None, Any]],
+    tooltip: str | None = None,
+    highlight_labels: set[str] | None = None,
+) -> ft.Control:
+    highlighted = highlight_labels or set()
+    panel = ft.Container(
+        content=ft.Column(
+            controls=[
+                ft.Text(title, size=16, weight="bold"),
+                *[
+                    _state_row(
+                        label,
+                        value,
+                        row_tooltip,
+                        full_value,
+                        highlight=label in highlighted,
+                    )
+                    for label, value, row_tooltip, full_value in rows
+                ],
+            ],
+            spacing=4,
+            tight=True,
+            horizontal_alignment=ft.CrossAxisAlignment.START,
+        ),
+        width=420,
+        padding=10,
+        border=ft.Border.all(),
+        border_radius=8,
+    )
+    return _with_tooltip(panel, tooltip)
+
+
+def _show_step_dialog(page: ft.Page, dialog_title: str, steps: list[dict[str, Any]]) -> None:
     resize_event_name = "on_resized" if hasattr(page, "on_resized") else "on_resize"
     previous_resize_handler = getattr(page, resize_event_name, None)
 
-    def _safe_dimension(value: Any, fallback: int) -> int:
-        if isinstance(value, (int, float)) and value > 0:
-            return int(value)
-        return fallback
-
-    def _page_size() -> tuple[int, int]:
-        width = getattr(page, "width", None)
-        height = getattr(page, "height", None)
-        window = getattr(page, "window", None)
-
-        if width is None and window is not None:
-            width = getattr(window, "width", None)
-        if height is None and window is not None:
-            height = getattr(window, "height", None)
-
-        return _safe_dimension(width, 1100), _safe_dimension(height, 760)
+    current_step = {"index": 0}
+    progress_text = ft.Text()
+    step_container = ft.Container(width=620)
 
     def apply_responsive_dialog_size() -> None:
-        page_width, page_height = _page_size()
+        page_width, page_height = _page_size(page)
         content_width = max(620, min(980, int(page_width * 0.82)))
         content_height = max(360, min(760, int(page_height * 0.72)))
 
@@ -85,20 +203,28 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVis
         if dialog.open:
             page.update()
 
-    def close_dialog(e):
+    def close_dialog(e) -> None:
         dialog.open = False
         if getattr(page, resize_event_name, None) == on_page_resized:
             setattr(page, resize_event_name, previous_resize_handler)
         page.update()
 
-    def on_previous(e):
+    def render_current_step() -> None:
+        index = current_step["index"]
+        step = steps[index]
+        progress_text.value = f"Step {index + 1}/{len(steps)}"
+        step_container.content = step["control"]
+        previous_button.disabled = index == 0
+        next_button.text = "Finish" if index == len(steps) - 1 else "Next"
+
+    def on_previous(e) -> None:
         if current_step["index"] <= 0:
             return
         current_step["index"] -= 1
         render_current_step()
         page.update()
 
-    def on_next(e):
+    def on_next(e) -> None:
         if current_step["index"] >= len(steps) - 1:
             close_dialog(e)
             return
@@ -106,115 +232,47 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVis
         render_current_step()
         page.update()
 
-    def with_tooltip(control: ft.Control, message: str | None, full_value: Any = None) -> ft.Control:
-        tooltip_message = _tooltip_with_full_value(message, full_value)
-        if tooltip_message:
-            return ft.Container(
-                content=control,
-                tooltip=ft.Tooltip(message=tooltip_message, prefer_below=False),
-                padding=0,
-            )
-        return control
+    previous_button = ft.TextButton("Previous", on_click=on_previous)
+    next_button = ft.TextButton("Next", on_click=on_next)
 
-    def flow_node(
-        label: str,
-        value: str | None = None,
-        circle: bool = False,
-        width: int = 170,
-        height: int = 90,
-        tooltip: str | None = None,
-        full_value: Any = None,
-        bgcolor: str | None = None,
-        text_color: str | None = None,
-        border_color: str | None = None,
-    ) -> ft.Control:
-        controls = [ft.Text(label, weight="bold", text_align=ft.TextAlign.CENTER, color=text_color)]
-        if value:
-            controls.append(ft.Text(value, text_align=ft.TextAlign.CENTER, color=text_color))
-
-        node = ft.Container(
-            content=ft.Column(
-                controls=controls,
-                spacing=4,
-                tight=True,
-                expand=True,
-                alignment=ft.MainAxisAlignment.CENTER,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            width=width,
-            height=height,
-            padding=10,
-            bgcolor=bgcolor,
-            border=ft.Border.all(color=border_color) if border_color is not None else ft.Border.all(),
-            border_radius=45 if circle else 8,
-        )
-        return with_tooltip(node, tooltip, full_value)
-
-    def state_row(
-        label: str,
-        value: str,
-        tooltip: str | None = None,
-        full_value: Any = None,
-        highlight: bool = False,
-    ) -> ft.Control:
-        row = ft.Row(
+    dialog_content = ft.Container(
+        content=ft.Column(
             controls=[
-                ft.Text(
-                    f"{label}:",
-                    weight="bold",
-                    color=ft.Colors.ON_PRIMARY_CONTAINER if highlight else None,
-                ),
-                ft.Text(
-                    value,
-                    weight=ft.FontWeight.W_600 if highlight else None,
-                    color=ft.Colors.ON_PRIMARY_CONTAINER if highlight else None,
-                ),
+                progress_text,
+                ft.Text("Click Next to continue to the following step."),
+                ft.Row(controls=[step_container], alignment=ft.MainAxisAlignment.CENTER),
             ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            expand=True,
             spacing=8,
-            wrap=True,
-        )
-        row_control: ft.Control = row
-        if highlight:
-            row_control = ft.Container(
-                content=row,
-                padding=ft.Padding.symmetric(horizontal=6, vertical=2),
-                border_radius=6,
-                bgcolor=ft.Colors.PRIMARY_CONTAINER,
-            )
-        return with_tooltip(row_control, tooltip, full_value)
+            scroll=ft.ScrollMode.ALWAYS,
+        ),
+        width=700,
+        height=460,
+    )
 
-    def party_state_panel(
-        title: str,
-        rows: list[tuple[str, str, str | None, Any]],
-        tooltip: str | None = None,
-        highlight_labels: set[str] | None = None,
-    ) -> ft.Control:
-        highlighted = highlight_labels or set()
-        panel = ft.Container(
-            content=ft.Column(
-                controls=[
-                    ft.Text(title, size=16, weight="bold"),
-                    *[
-                        state_row(
-                            label,
-                            value,
-                            row_tooltip,
-                            full_value,
-                            highlight=label in highlighted,
-                        )
-                        for label, value, row_tooltip, full_value in rows
-                    ],
-                ],
-                spacing=4,
-                tight=True,
-                horizontal_alignment=ft.CrossAxisAlignment.START,
-            ),
-            width=420,
-            padding=10,
-            border=ft.Border.all(),
-            border_radius=8,
-        )
-        return with_tooltip(panel, tooltip)
+    dialog = ft.AlertDialog(
+        modal=True,
+        title=ft.Text(dialog_title),
+        content=dialog_content,
+        actions=[previous_button, next_button, ft.TextButton("Close", on_click=close_dialog)],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+
+    apply_responsive_dialog_size()
+    setattr(page, resize_event_name, on_page_resized)
+    render_current_step()
+    page.overlay.append(dialog)
+    dialog.open = True
+    page.update()
+
+
+def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVisualizationSnapshot) -> None:
+    tooltips = get_tooltip_messages("double_ratchet")
+
+    flow_node = _flow_node
+    party_state_panel = _party_state_panel
 
     sender = step_data.sender
     receiver = step_data.receiver
@@ -266,8 +324,9 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVis
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
+            ft.Divider(height=1),
             party_state_panel(
-                "Sender party state (before send)",
+                "Sender state (before send)",
                 [
                     ("DHs", before_dh, tooltips.get("step_viz_sender_before_dhs", ""), before_dh_full),
                     ("PN", str(before_pn), tooltips.get("step_viz_sender_before_pn", ""), None),
@@ -320,14 +379,10 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVis
                 controls=[
                     flow_node("mk", mk, tooltip=tooltips.get("step_viz_encrypt_mk", ""), full_value=mk_full),
                     flow_node("Plaintext", plaintext, tooltip=tooltips.get("step_viz_encrypt_plaintext", "")),
+                    flow_node("AD||header", tooltip=tooltips.get("step_viz_ad_header", "")),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 spacing=24,
-            ),
-            flow_node(
-                "AD||header",
-                width=220,
-                tooltip=tooltips.get("step_viz_ad_header", ""),
             ),
             ft.Text("↓", size=24),
             flow_node("ENCRYPT", circle=True, tooltip=tooltips.get("step_viz_encrypt_fn", "")),
@@ -393,6 +448,7 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVis
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
+            ft.Divider(height=1),
             ft.Row(
                 controls=[
                     party_state_panel(
@@ -439,221 +495,14 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVis
         },
     ]
 
-    current_step = {"index": 0}
-    progress_text = ft.Text()
-    step_container = ft.Container(width=620)
-    previous_button = ft.TextButton("Previous", on_click=on_previous)
-    next_button = ft.TextButton("Next", on_click=on_next)
-
-    def render_current_step() -> None:
-        index = current_step["index"]
-        step = steps[index]
-        progress_text.value = f"Step {index + 1}/{len(steps)}"
-        step_container.content = step["control"]
-        previous_button.disabled = index == 0
-        next_button.text = "Finish" if index == len(steps) - 1 else "Next"
-
-    dialog_content = ft.Container(
-        content=ft.Column(
-            controls=[
-                progress_text,
-                ft.Text("Click Next to continue to the following step."),
-                ft.Row(controls=[step_container], alignment=ft.MainAxisAlignment.CENTER),
-            ],
-            alignment=ft.MainAxisAlignment.CENTER,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            expand=True,
-            spacing=8,
-            scroll=ft.ScrollMode.ALWAYS,
-        ),
-        width=700,
-        height=460,
-    )
-
-    dialog = ft.AlertDialog(
-        modal=True,
-        title=ft.Text("Step-by-step vizualization"),
-        content=dialog_content,
-        actions=[previous_button, next_button, ft.TextButton("Close", on_click=close_dialog)],
-        actions_alignment=ft.MainAxisAlignment.END,
-    )
-    apply_responsive_dialog_size()
-    setattr(page, resize_event_name, on_page_resized)
-    render_current_step()
-    page.overlay.append(dialog)
-    dialog.open = True
-    page.update()
+    _show_step_dialog(page, "Step-by-step vizualization", steps)
 
 
 def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveStepVisualizationSnapshot) -> None:
     tooltips = get_tooltip_messages("double_ratchet")
 
-    resize_event_name = "on_resized" if hasattr(page, "on_resized") else "on_resize"
-    previous_resize_handler = getattr(page, resize_event_name, None)
-
-    def _safe_dimension(value: Any, fallback: int) -> int:
-        if isinstance(value, (int, float)) and value > 0:
-            return int(value)
-        return fallback
-
-    def _page_size() -> tuple[int, int]:
-        width = getattr(page, "width", None)
-        height = getattr(page, "height", None)
-        window = getattr(page, "window", None)
-
-        if width is None and window is not None:
-            width = getattr(window, "width", None)
-        if height is None and window is not None:
-            height = getattr(window, "height", None)
-
-        return _safe_dimension(width, 1100), _safe_dimension(height, 760)
-
-    def apply_responsive_dialog_size() -> None:
-        page_width, page_height = _page_size()
-        content_width = max(620, min(980, int(page_width * 0.82)))
-        content_height = max(360, min(760, int(page_height * 0.72)))
-
-        dialog_content.width = content_width
-        dialog_content.height = content_height
-        step_container.width = max(520, content_width - 80)
-
-    def on_page_resized(e) -> None:
-        apply_responsive_dialog_size()
-        if callable(previous_resize_handler):
-            previous_resize_handler(e)
-        if dialog.open:
-            page.update()
-
-    def close_dialog(e):
-        dialog.open = False
-        if getattr(page, resize_event_name, None) == on_page_resized:
-            setattr(page, resize_event_name, previous_resize_handler)
-        page.update()
-
-    def on_previous(e):
-        if current_step["index"] <= 0:
-            return
-        current_step["index"] -= 1
-        render_current_step()
-        page.update()
-
-    def on_next(e):
-        if current_step["index"] >= len(steps) - 1:
-            close_dialog(e)
-            return
-        current_step["index"] += 1
-        render_current_step()
-        page.update()
-
-    def with_tooltip(control: ft.Control, message: str | None, full_value: Any = None) -> ft.Control:
-        tooltip_message = _tooltip_with_full_value(message, full_value)
-        if tooltip_message:
-            return ft.Container(
-                content=control,
-                tooltip=ft.Tooltip(message=tooltip_message, prefer_below=False),
-                padding=0,
-            )
-        return control
-
-    def flow_node(
-        label: str,
-        value: str | None = None,
-        circle: bool = False,
-        width: int = 170,
-        height: int = 90,
-        tooltip: str | None = None,
-        full_value: Any = None,
-        bgcolor: str | None = None,
-        text_color: str | None = None,
-        border_color: str | None = None,
-    ) -> ft.Control:
-        controls = [ft.Text(label, weight="bold", text_align=ft.TextAlign.CENTER, color=text_color)]
-        if value:
-            controls.append(ft.Text(value, text_align=ft.TextAlign.CENTER, color=text_color))
-
-        node = ft.Container(
-            content=ft.Column(
-                controls=controls,
-                spacing=4,
-                tight=True,
-                expand=True,
-                alignment=ft.MainAxisAlignment.CENTER,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            width=width,
-            height=height,
-            padding=10,
-            bgcolor=bgcolor,
-            border=ft.Border.all(color=border_color) if border_color is not None else ft.Border.all(),
-            border_radius=45 if circle else 8,
-        )
-        return with_tooltip(node, tooltip, full_value)
-
-    def state_row(
-        label: str,
-        value: str,
-        tooltip: str | None = None,
-        full_value: Any = None,
-        highlight: bool = False,
-    ) -> ft.Control:
-        row = ft.Row(
-            controls=[
-                ft.Text(
-                    f"{label}:",
-                    weight="bold",
-                    color=ft.Colors.ON_PRIMARY_CONTAINER if highlight else None,
-                ),
-                ft.Text(
-                    value,
-                    weight=ft.FontWeight.W_600 if highlight else None,
-                    color=ft.Colors.ON_PRIMARY_CONTAINER if highlight else None,
-                ),
-            ],
-            spacing=8,
-            wrap=True,
-        )
-        row_control: ft.Control = row
-        if highlight:
-            row_control = ft.Container(
-                content=row,
-                padding=ft.Padding.symmetric(horizontal=6, vertical=2),
-                border_radius=6,
-                bgcolor=ft.Colors.PRIMARY_CONTAINER,
-            )
-        return with_tooltip(row_control, tooltip, full_value)
-
-    def party_state_panel(
-        title: str,
-        rows: list[tuple[str, str, str | None, Any]],
-        tooltip: str | None = None,
-        highlight_labels: set[str] | None = None,
-    ) -> ft.Control:
-        highlighted = highlight_labels or set()
-        panel = ft.Container(
-            content=ft.Column(
-                controls=[
-                    ft.Text(title, size=16, weight="bold"),
-                    *[
-                        state_row(
-                            label,
-                            value,
-                            row_tooltip,
-                            full_value,
-                            highlight=label in highlighted,
-                        )
-                        for label, value, row_tooltip, full_value in rows
-                    ],
-                ],
-                spacing=4,
-                tight=True,
-                horizontal_alignment=ft.CrossAxisAlignment.START,
-            ),
-            width=420,
-            padding=10,
-            border=ft.Border.all(),
-            border_radius=8,
-        )
-        return with_tooltip(panel, tooltip)
+    flow_node = _flow_node
+    party_state_panel = _party_state_panel
 
     sender = step_data.sender
     receiver = step_data.receiver
@@ -743,6 +592,7 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
                 tooltip=tooltips.get("step_viz_receive_ciphertext", ""),
                 full_value=cipher_full,
             ),
+            ft.Divider(height=1),
             party_state_panel(
                 "Receiver state before receive",
                 [
@@ -811,15 +661,17 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    skip_to_n_data_flow = ft.Column(
-        controls=[
-            ft.Text("Sync Nr to header.n", weight="bold"),
-            flow_node(
-                "Check correlation",
-                f"Nr: {fast_forward_from_nr}  n: {header_n + 1}",
-                width=300,
-                tooltip=tooltips.get("step_viz_receive_fast_forward", ""),
-            ),
+    controls = [
+        ft.Text("Sync Nr to header.n", weight="bold"),
+        flow_node(
+            "Check correlation",
+            f"Nr: {fast_forward_from_nr}  n: {header_n + 1}",
+            width=300,
+            tooltip=tooltips.get("step_viz_receive_fast_forward", ""),
+        ),
+    ]
+    if fast_forward_count > 0:
+        controls.extend([
             ft.Text("↓", size=24),
             flow_node(
                 "SkipMessageKeys(state, n)",
@@ -829,10 +681,13 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
                 tooltip=tooltips.get("step_viz_receive_fast_forward", ""),
                 full_value=(
                     f"Roll receive chain to n={header_n + 1}.\n"
-                    f"Each skipped index derives MK and stores it into MKSKIPPED."
-                ),
+                    f"Each skipped index derives MK and stores it into MKSKIPPED.")
             ),
-        ],
+        ])
+    else:
+        controls.append(ft.Text("No fast forward needed", weight="bold"))
+    skip_to_n_data_flow = ft.Column(
+        controls=controls,
         spacing=6,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
@@ -893,9 +748,9 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
         if value != dh_ratchet_after_values.get(label)
     }
 
-    step_dh_ratchet_data_flow = ft.Column(
+    step_dh_ratchet_data_flow_1 = ft.Column(
         controls=[
-            ft.Text("DH ratchet update", weight="bold"),
+            ft.Text("DH ratchet update (part 1)", weight="bold"),
             ft.Row(
                 controls=[
                     flow_node("Header.dh", _last_n_chars(header_dh_full, 8), tooltip=tooltips.get("step_viz_receive_header_dh", ""), full_value=header_dh_full),
@@ -956,6 +811,14 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
                 width=220,
                 tooltip=tooltips.get("step_viz_receive_set_nr_zero", ""),
             ),
+        ],
+        spacing=6,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+
+    step_dh_ratchet_data_flow_2 = ft.Column(
+        controls=[
+            ft.Text("DH ratchet update (part 2)", weight="bold"),
             ft.Text("↓", size=24),
             flow_node(
                 "Generate new DH key pair",
@@ -978,7 +841,7 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
                     f"CKs after 2nd KDF_RK: {_to_text(after_cks_full)}"
                 ),
             ),
-            ft.Text("↓", size=24),
+            ft.Divider(height=1),
             ft.Row(
                 controls=[
                     party_state_panel(
@@ -1062,6 +925,7 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
+            ft.Divider(height=1),
             ft.Row(
                 controls=[
                     party_state_panel(
@@ -1106,8 +970,14 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
         if dh_ratchet_needed:
             steps.append(
                 {
-                    "title": "DH ratchet update",
-                    "control": step_dh_ratchet_data_flow,
+                    "title": "DH ratchet update (part 1)",
+                    "control": step_dh_ratchet_data_flow_1,
+                }
+            )
+            steps.append(
+                {
+                    "title": "DH ratchet update (part 2)",
+                    "control": step_dh_ratchet_data_flow_2,
                 }
             )
         steps.extend(
@@ -1142,47 +1012,4 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
         if isinstance(step["control"], ft.Column) and len(step["control"].controls) > 0:
             step["control"].controls[0].value = numbered_title
 
-    current_step = {"index": 0}
-    progress_text = ft.Text()
-    step_container = ft.Container(width=620)
-    previous_button = ft.TextButton("Previous", on_click=on_previous)
-    next_button = ft.TextButton("Next", on_click=on_next)
-
-    def render_current_step() -> None:
-        index = current_step["index"]
-        step = steps[index]
-        progress_text.value = f"Step {index + 1}/{len(steps)}"
-        step_container.content = step["control"]
-        previous_button.disabled = index == 0
-        next_button.text = "Finish" if index == len(steps) - 1 else "Next"
-
-    dialog_content = ft.Container(
-        content=ft.Column(
-            controls=[
-                progress_text,
-                ft.Text("Click Next to continue to the following step."),
-                ft.Row(controls=[step_container], alignment=ft.MainAxisAlignment.CENTER),
-            ],
-            alignment=ft.MainAxisAlignment.CENTER,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            expand=True,
-            spacing=8,
-            scroll=ft.ScrollMode.ALWAYS,
-        ),
-        width=700,
-        height=460,
-    )
-
-    dialog = ft.AlertDialog(
-        modal=True,
-        title=ft.Text("Receiving ratchet step visualization"),
-        content=dialog_content,
-        actions=[previous_button, next_button, ft.TextButton("Close", on_click=close_dialog)],
-        actions_alignment=ft.MainAxisAlignment.END,
-    )
-    apply_responsive_dialog_size()
-    setattr(page, resize_event_name, on_page_resized)
-    render_current_step()
-    page.overlay.append(dialog)
-    dialog.open = True
-    page.update()
+    _show_step_dialog(page, "Receiving ratchet step visualization", steps)
