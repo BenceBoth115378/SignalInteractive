@@ -43,8 +43,8 @@ def initialize_key_history(session: DoubleRatchetState) -> None:
                     used_for=["session bootstrap"],
                 )
             )
-        if party.CKs and not history.ck_events:
-            history.add_ck_event(
+        if party.CKs and not history.cks_events:
+            history.add_cks_event(
                 KeyEvent(
                     key_type="CK",
                     key_number=0,
@@ -103,7 +103,7 @@ def track_keys_from_send_snapshot(
         )
 
     if _keys_differ(before.CKs, after.CKs) and after.CKs is not None:
-        party.key_history.add_ck_event(
+        party.key_history.add_cks_event(
             KeyEvent(
                 key_type="CK",
                 key_number=0,
@@ -173,7 +173,7 @@ def track_keys_from_receive_snapshot(
             context += " (ratchet via KDF_CK)"
         if snapshot.fast_forward_count > 0:
             context += f", fast-forwarded {snapshot.fast_forward_count} steps"
-        party.key_history.add_ck_event(
+        party.key_history.add_ckr_event(
             KeyEvent(
                 key_type="CK",
                 key_number=0,

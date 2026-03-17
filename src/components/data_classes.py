@@ -46,14 +46,21 @@ class KeyEvent:
 class KeyHistory:
     """Maintains counts and events for each key type."""
     rk_events: list[KeyEvent] = field(default_factory=list)
-    ck_events: list[KeyEvent] = field(default_factory=list)
+    cks_events: list[KeyEvent] = field(default_factory=list)
+    ckr_events: list[KeyEvent] = field(default_factory=list)
     dh_events: list[KeyEvent] = field(default_factory=list)
 
     def get_rk_count(self) -> int:
         return len(self.rk_events)
 
+    def get_cks_count(self) -> int:
+        return len(self.cks_events)
+
+    def get_ckr_count(self) -> int:
+        return len(self.ckr_events)
+
     def get_ck_count(self) -> int:
-        return len(self.ck_events)
+        return self.get_cks_count() + self.get_ckr_count()
 
     def get_dh_count(self) -> int:
         return len(self.dh_events)
@@ -62,9 +69,21 @@ class KeyHistory:
         event.key_number = self.get_rk_count() + 1
         self.rk_events.append(event)
 
+    def add_cks_event(self, event: KeyEvent) -> None:
+        event.direction = "send"
+        event.key_number = self.get_cks_count() + 1
+        self.cks_events.append(event)
+
+    def add_ckr_event(self, event: KeyEvent) -> None:
+        event.direction = "recv"
+        event.key_number = self.get_ckr_count() + 1
+        self.ckr_events.append(event)
+
     def add_ck_event(self, event: KeyEvent) -> None:
-        event.key_number = self.get_ck_count() + 1
-        self.ck_events.append(event)
+        if event.direction == "recv":
+            self.add_ckr_event(event)
+            return
+        self.add_cks_event(event)
 
     def add_dh_event(self, event: KeyEvent) -> None:
         event.key_number = self.get_dh_count() + 1

@@ -91,20 +91,38 @@ def collect_attacker_secret_options(session: DoubleRatchetState) -> list[dict[st
                 }
             )
 
-        for event in party.key_history.ck_events:
-            direction = event.direction or ("send" if "send" in event.created_at_step else "recv")
+        for event in party.key_history.cks_events:
             add_option(
-                f"{prefix}:ck:{event.key_number}",
-                f"{party.name} {get_key_display_label('CK', event.key_number)}",
-                "ck",
+                f"{prefix}:cks:{event.key_number}",
+                f"{party.name} {get_key_display_label('CKs', event.key_number)}",
+                "cks",
                 event.key_value,
             )
             options[-1].update(
                 {
                     "party": event.party,
-                    "direction": direction,
-                    "public": event.public_value if direction == "send" else "",
-                    "remote_public": event.remote_public if direction == "recv" else "",
+                    "direction": "send",
+                    "public": event.public_value,
+                    "remote_public": "",
+                    "start_n": event.start_n,
+                    "secret_type": "history_key",
+                    "context": get_key_tooltip_text(event),
+                }
+            )
+
+        for event in party.key_history.ckr_events:
+            add_option(
+                f"{prefix}:ckr:{event.key_number}",
+                f"{party.name} {get_key_display_label('CKr', event.key_number)}",
+                "ckr",
+                event.key_value,
+            )
+            options[-1].update(
+                {
+                    "party": event.party,
+                    "direction": "recv",
+                    "public": "",
+                    "remote_public": event.remote_public,
                     "start_n": event.start_n,
                     "secret_type": "history_key",
                     "context": get_key_tooltip_text(event),
@@ -266,8 +284,13 @@ def decrypt_with_attacker_selection(
                     mark_decryptable(entry, plaintext, str(secret.get("label", "MK")))
             continue
 
-        elif kind == "ck":
+        elif kind in {"ck", "cks", "ckr"}:
             direction = secret.get("direction")
+            if direction not in {"send", "recv"}:
+                if kind == "cks":
+                    direction = "send"
+                elif kind == "ckr":
+                    direction = "recv"
             public_key = secret.get("public") if direction == "send" else secret.get("remote_public")
             start_n = secret.get("start_n")
             if not isinstance(party, str) or direction not in {"send", "recv"}:
@@ -463,6 +486,10 @@ def build_attacker_dashboard(
             return f"DH#{number}"
         if kind == "rk":
             return f"RK#{number}"
+        if kind == "cks":
+            return f"CKs#{number}"
+        if kind == "ckr":
+            return f"CKr#{number}"
         if kind == "ck":
             direction = item.get("direction")
             if direction == "send":
@@ -476,7 +503,9 @@ def build_attacker_dashboard(
         kind_rank = {
             "dh_private": 0,
             "rk": 1,
-            "ck": 2,
+            "cks": 2,
+            "ckr": 3,
+            "ck": 4,
             "mk": 3,
         }.get(str(item.get("kind", "")), 99)
         return (kind_rank, _extract_key_number(item))
@@ -553,11 +582,19 @@ def build_attacker_dashboard(
                     key=_key_sort,
                 )
                 ck_send = sorted(
-                    [item for item in owner_items if item.get("kind") == "ck" and item.get("direction") == "send"],
+                    [
+                        item
+                        for item in owner_items
+                        if item.get("kind") == "cks" or (item.get("kind") == "ck" and item.get("direction") == "send")
+                    ],
                     key=_key_sort,
                 )
                 ck_recv = sorted(
-                    [item for item in owner_items if item.get("kind") == "ck" and item.get("direction") == "recv"],
+                    [
+                        item
+                        for item in owner_items
+                        if item.get("kind") == "ckr" or (item.get("kind") == "ck" and item.get("direction") == "recv")
+                    ],
                     key=_key_sort,
                 )
 
