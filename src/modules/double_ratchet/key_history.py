@@ -102,21 +102,29 @@ def track_keys_from_send_snapshot(
             )
         )
 
-    if _keys_differ(before.CKs, after.CKs) and after.CKs is not None:
-        party.key_history.add_cks_event(
-            KeyEvent(
-                key_type="CK",
-                key_number=0,
-                key_value=after.CKs,
-                created_at_step=_snapshot_to_string(step_number, "send"),
-                created_in_context="KDF_CK on sending chain",
-                party=party.name,
-                direction="send",
-                public_value=after.DHs_public,
-                start_n=after.Ns,
-                used_for=[f"future sends after message #{pending_id}"],
+    # Track the sending chain key that was actually used for this message.
+    # This keeps CKs#1 usable for the first sent message and avoids an immediate extra entry.
+    if before.CKs is not None:
+        latest_cks = party.key_history.cks_events[-1].key_value if party.key_history.cks_events else None
+        if _keys_differ(latest_cks, before.CKs):
+            party.key_history.add_cks_event(
+                KeyEvent(
+                    key_type="CK",
+                    key_number=0,
+                    key_value=before.CKs,
+                    created_at_step=_snapshot_to_string(step_number, "send"),
+                    created_in_context="KDF_CK input on sending chain",
+                    party=party.name,
+                    direction="send",
+                    public_value=before.DHs_public,
+                    start_n=snapshot.header.n,
+                    used_for=[f"message #{pending_id}"],
+                )
             )
-        )
+
+    if _keys_differ(before.CKs, after.CKs) and after.CKs is not None:
+        # Keep tracking of chain evolution for subsequent messages via before.CKs on later send steps.
+        pass
 
     if before.DHs_public != after.DHs_public and after.DHs_public:
         party.key_history.add_dh_event(
@@ -165,28 +173,41 @@ def track_keys_from_receive_snapshot(
             )
         )
 
+    # Track the receiving chain key that decrypted this message (pre-KDF CKr).
+    ckr_for_current_message = snapshot.ckr_before_kdf_ck
+    if ckr_for_current_message is not None:
+        latest_ckr = party.key_history.ckr_events[-1].key_value if party.key_history.ckr_events else None
+        if _keys_differ(latest_ckr, ckr_for_current_message):
+            context = "Receive chain key"
+            if snapshot.dh_ratchet_needed:
+                context += " (new from DH ratchet)"
+            else:
+                context += " (KDF_CK input)"
+            if snapshot.fast_forward_count > 0:
+                context += f", fast-forwarded {snapshot.fast_forward_count} steps"
+            party.key_history.add_ckr_event(
+                KeyEvent(
+                    key_type="CK",
+                    key_number=0,
+                    key_value=ckr_for_current_message,
+                    created_at_step=_snapshot_to_string(step_number, "receive"),
+                    created_in_context=context,
+                    party=party.name,
+                    direction="recv",
+                    remote_public=after.DHr,
+                    start_n=snapshot.header.n,
+                    used_for=[f"message #{pending_id}"],
+                )
+            )
+
     if _keys_differ(before.CKr, after.CKr) and after.CKr is not None:
         context = "Receive chain key"
         if snapshot.dh_ratchet_needed:
             context += " (new from DH ratchet)"
         else:
             context += " (ratchet via KDF_CK)"
-        if snapshot.fast_forward_count > 0:
-            context += f", fast-forwarded {snapshot.fast_forward_count} steps"
-        party.key_history.add_ckr_event(
-            KeyEvent(
-                key_type="CK",
-                key_number=0,
-                key_value=after.CKr,
-                created_at_step=_snapshot_to_string(step_number, "receive"),
-                created_in_context=context,
-                party=party.name,
-                direction="recv",
-                remote_public=after.DHr,
-                start_n=after.Nr,
-                used_for=[f"future receives after message #{pending_id}"],
-            )
-        )
+        # Subsequent receive keys are represented by ckr_before_kdf_ck on later receive steps.
+        pass
 
     if before.DHs_public != after.DHs_public and after.DHs_public:
         party.key_history.add_dh_event(
