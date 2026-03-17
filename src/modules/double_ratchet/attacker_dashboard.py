@@ -179,6 +179,17 @@ def _try_decrypt_with_message_key(entry: dict[str, Any], mk: bytes) -> str:
     return _decode_plaintext(plaintext)
 
 
+def _derive_chain_message_key(chain_key: bytes, step_count: int) -> bytes | None:
+    if not isinstance(chain_key, bytes) or not chain_key or step_count < 1:
+        return None
+
+    current_ck = chain_key
+    mk = None
+    for _ in range(step_count):
+        current_ck, mk = ext.KDF_CK(current_ck)
+    return mk
+
+
 def decrypt_with_attacker_selection(
     session: DoubleRatchetState,
     pending_messages: list[dict[str, Any]],
@@ -214,13 +225,60 @@ def decrypt_with_attacker_selection(
         result["plaintext"] = plaintext
         result["source"] = source
 
+    chain_cache: dict[tuple[str, int], bytes | None] = {}
     for secret in compromised_secrets.values():
-        if secret.get("kind") != "mk":
+        kind = secret.get("kind")
+        if kind == "mk":
+            for entry in messages:
+                plaintext = _try_decrypt_with_message_key(entry, secret.get("value"))
+                if plaintext:
+                    mark_decryptable(entry, plaintext, str(secret.get("label", "MK")))
             continue
+
+        if kind != "ck":
+            continue
+
+        party = secret.get("party")
+        direction = secret.get("direction")
+        public_key = secret.get("public") if direction == "send" else secret.get("remote_public")
+        start_n = secret.get("start_n")
+        if not isinstance(party, str) or direction not in {"send", "recv"}:
+            continue
+        if not isinstance(public_key, str) or not public_key:
+            continue
+        if not isinstance(start_n, int):
+            continue
+
         for entry in messages:
-            plaintext = _try_decrypt_with_message_key(entry, secret.get("value"))
+            header = entry.get("header")
+            if not isinstance(header, Header):
+                continue
+            if direction == "send":
+                if entry.get("sender") != party:
+                    continue
+            else:
+                if entry.get("receiver") != party:
+                    continue
+            if header.dh != public_key:
+                continue
+            if header.n < start_n:
+                continue
+
+            step_count = header.n - start_n + 1
+            cache_key = (str(secret.get("id", "")), step_count)
+            if cache_key not in chain_cache:
+                chain_cache[cache_key] = _derive_chain_message_key(secret.get("value"), step_count)
+            mk = chain_cache[cache_key]
+            if mk is None:
+                continue
+
+            plaintext = _try_decrypt_with_message_key(entry, mk)
             if plaintext:
-                mark_decryptable(entry, plaintext, str(secret.get("label", "MK")))
+                mark_decryptable(
+                    entry,
+                    plaintext,
+                    f"{secret.get('label', 'CK')} -> KDF_CK step {step_count}",
+                )
 
     return sorted(results, key=lambda item: int(item.get("id", 0)), reverse=True)
 
