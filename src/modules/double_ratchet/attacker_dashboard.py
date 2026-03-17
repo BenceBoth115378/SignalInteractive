@@ -7,6 +7,7 @@ import flet as ft
 from components.data_classes import DHKeyPair, DoubleRatchetState, Header
 from modules.base_view import last_n_chars
 from modules.double_ratchet import external as ext
+from modules.double_ratchet.key_history import get_key_display_label, get_key_tooltip_text
 
 
 def _message_entries_for_attacker(
@@ -70,72 +71,62 @@ def collect_attacker_secret_options(session: DoubleRatchetState) -> list[dict[st
         )
 
     for party in (session.initializer, session.responder):
-        prefix = f"party:{party.name}"
-        if party.DHs is not None and party.DHs.private:
+        prefix = f"kh:{party.name}"
+
+        for event in party.key_history.rk_events:
             add_option(
-                f"{prefix}:dhs_private",
-                f"{party.name} DHs private",
-                "dh_private",
-                party.DHs.private,
+                f"{prefix}:rk:{event.key_number}",
+                f"{party.name} {get_key_display_label('RK', event.key_number)}",
+                "rk",
+                event.key_value,
             )
             options[-1].update(
                 {
-                    "party": party.name,
-                    "public": party.DHs.public,
-                    "remote_public": party.DHr,
-                    "start_send_n": party.Ns,
-                    "start_recv_n": party.Nr,
-                    "secret_type": "party_secret",
-                }
-            )
-        add_option(f"{prefix}:rk", f"{party.name} RK", "rk", party.RK)
-        if options and options[-1]["id"] == f"{prefix}:rk":
-            options[-1].update(
-                {
-                    "party": party.name,
-                    "public": party.DHs.public if party.DHs is not None else "",
-                    "remote_public": party.DHr,
-                    "start_send_n": party.Ns,
-                    "start_recv_n": party.Nr,
-                    "secret_type": "party_secret",
-                }
-            )
-        add_option(f"{prefix}:cks", f"{party.name} CKs", "ck", party.CKs)
-        if options and options[-1]["id"] == f"{prefix}:cks":
-            options[-1].update(
-                {
-                    "party": party.name,
-                    "direction": "send",
-                    "public": party.DHs.public if party.DHs is not None else "",
-                    "start_n": party.Ns,
-                    "secret_type": "party_secret",
-                }
-            )
-        add_option(f"{prefix}:ckr", f"{party.name} CKr", "ck", party.CKr)
-        if options and options[-1]["id"] == f"{prefix}:ckr":
-            options[-1].update(
-                {
-                    "party": party.name,
-                    "direction": "recv",
-                    "remote_public": party.DHr,
-                    "start_n": party.Nr,
-                    "secret_type": "party_secret",
+                    "party": event.party,
+                    "remote_public": event.remote_public,
+                    "start_send_n": event.start_send_n,
+                    "start_recv_n": event.start_recv_n,
+                    "secret_type": "history_key",
+                    "context": get_key_tooltip_text(event),
                 }
             )
 
-        for (dh_key, n_idx), mk in party.MKSKIPPED.items():
+        for event in party.key_history.ck_events:
+            direction = event.direction or ("send" if "send" in event.created_at_step else "recv")
             add_option(
-                f"{prefix}:mkskipped:{dh_key}:{n_idx}",
-                f"{party.name} MKSKIPPED(dh={dh_key[-8:]}, n={n_idx + 1})",
-                "mk",
-                mk,
+                f"{prefix}:ck:{event.key_number}",
+                f"{party.name} {get_key_display_label('CK', event.key_number)}",
+                "ck",
+                event.key_value,
             )
             options[-1].update(
                 {
-                    "party": party.name,
-                    "dh": dh_key,
-                    "n": n_idx,
-                    "secret_type": "skipped_mk",
+                    "party": event.party,
+                    "direction": direction,
+                    "public": event.public_value if direction == "send" else "",
+                    "remote_public": event.remote_public if direction == "recv" else "",
+                    "start_n": event.start_n,
+                    "secret_type": "history_key",
+                    "context": get_key_tooltip_text(event),
+                }
+            )
+
+        for event in party.key_history.dh_events:
+            add_option(
+                f"{prefix}:dh:{event.key_number}",
+                f"{party.name} {get_key_display_label('DH', event.key_number)}",
+                "dh_private",
+                event.key_value,
+            )
+            options[-1].update(
+                {
+                    "party": event.party,
+                    "public": event.public_value,
+                    "remote_public": event.remote_public,
+                    "start_send_n": event.start_send_n,
+                    "start_recv_n": event.start_recv_n,
+                    "secret_type": "history_key",
+                    "context": get_key_tooltip_text(event),
                 }
             )
 
@@ -533,6 +524,7 @@ def build_attacker_dashboard(
                                 value=item["id"] in active_selected,
                                 on_change=lambda e, kid=item["id"]: update_selection(kid, bool(e.control.value)),
                             ),
+                            tooltip=item.get("context", ""),
                             width=220,
                             padding=ft.Padding.only(right=6),
                         )

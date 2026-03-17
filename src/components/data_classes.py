@@ -25,6 +25,52 @@ class DHKeyPair:
     public: str
 
 
+@dataclass
+class KeyEvent:
+    key_type: str
+    key_number: int
+    key_value: bytes | str
+    created_at_step: str
+    created_in_context: str
+    public_value: str = ""
+    party: str = ""
+    direction: str = ""
+    remote_public: str = ""
+    start_send_n: int = 0
+    start_recv_n: int = 0
+    start_n: int = 0
+    used_for: list[str] = field(default_factory=list)
+
+
+@dataclass
+class KeyHistory:
+    """Maintains counts and events for each key type."""
+    rk_events: list[KeyEvent] = field(default_factory=list)
+    ck_events: list[KeyEvent] = field(default_factory=list)
+    dh_events: list[KeyEvent] = field(default_factory=list)
+
+    def get_rk_count(self) -> int:
+        return len(self.rk_events)
+
+    def get_ck_count(self) -> int:
+        return len(self.ck_events)
+
+    def get_dh_count(self) -> int:
+        return len(self.dh_events)
+
+    def add_rk_event(self, event: KeyEvent) -> None:
+        event.key_number = self.get_rk_count() + 1
+        self.rk_events.append(event)
+
+    def add_ck_event(self, event: KeyEvent) -> None:
+        event.key_number = self.get_ck_count() + 1
+        self.ck_events.append(event)
+
+    def add_dh_event(self, event: KeyEvent) -> None:
+        event.key_number = self.get_dh_count() + 1
+        self.dh_events.append(event)
+
+
 class LimitedSkippedKeys(dict[tuple[str, int], bytes]):
     def __init__(self, *args, max_items: int = 2000, **kwargs):
         self.max_items = max_items
@@ -71,6 +117,7 @@ class PartyState:
     Nr: int = 0
     PN: int = 0
     MKSKIPPED: LimitedSkippedKeys = field(default_factory=LimitedSkippedKeys)
+    key_history: KeyHistory = field(default_factory=KeyHistory)
 
     def __post_init__(self):
         if isinstance(self.DHs, dict):

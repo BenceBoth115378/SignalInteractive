@@ -21,6 +21,11 @@ from modules.double_ratchet.step_visualization import (
     show_receiving_step_visualization_dialog,
     show_sending_step_visualization_dialog,
 )
+from modules.double_ratchet.key_history import (
+    initialize_key_history,
+    track_keys_from_send_snapshot,
+    track_keys_from_receive_snapshot,
+)
 from modules.double_ratchet.attacker_dashboard import build_attacker_dashboard, get_attacker_analysis
 from modules.double_ratchet.view import build_visual
 from components.data_classes import PartyState
@@ -149,6 +154,7 @@ class DoubleRatchetModule(BaseModule):
         self._attacker_compromised_secrets: dict[str, dict[str, Any]] = {}
         self._initial_warning_shown = False
         initialize_session(self.session)
+        initialize_key_history(self.session)
 
     def export_state(self) -> dict:
         return {
@@ -265,6 +271,7 @@ class DoubleRatchetModule(BaseModule):
         self._send_snapshots = {}
         self._receive_snapshots = {}
         initialize_session(self.session)
+        initialize_key_history(self.session)
 
     def _build_initializer_switch_warning(self, old_initializer: str, new_initializer: str) -> str:
         template = f"Session initializer switched from {old_initializer} to {new_initializer}.\n" if old_initializer and new_initializer else ""
@@ -370,6 +377,11 @@ class DoubleRatchetModule(BaseModule):
             before=before_snapshot,
             after=after_snapshot,
         )
+
+        # Track key generation from this receive step.
+        step_number = len(self._receive_snapshots) + 1
+        track_keys_from_receive_snapshot(receiver_state, step_number, snapshot, pending_id)
+
         self._receive_snapshots[pending_id] = snapshot
         return snapshot
 
@@ -437,7 +449,7 @@ class DoubleRatchetModule(BaseModule):
 
         after_snapshot = self._snapshot_party_state(sender_state)
 
-        return SendStepVisualizationSnapshot(
+        snapshot = SendStepVisualizationSnapshot(
             sender=sender_name,
             receiver=receiver_name,
             plaintext=plaintext_bytes,
@@ -449,6 +461,12 @@ class DoubleRatchetModule(BaseModule):
             after=after_snapshot,
             initializer_switch_warning=initializer_switch_warning,
         )
+
+        # Track key generation from this send step.
+        step_number = len(self._send_snapshots) + 1
+        track_keys_from_send_snapshot(sender_state, step_number, snapshot, pending_id)
+
+        return snapshot
 
     def _auto_receive_all_pending(self) -> None:
         for pending in self.pending_messages:
