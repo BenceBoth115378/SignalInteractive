@@ -119,12 +119,24 @@ def build_timeline(
             wrap=True,
         )
 
-    def _build_message_text(message_line: str) -> ft.Container:
+    def _build_message_text(message_line: str, tooltip_message: str = "") -> ft.Control:
         can_copy = page is not None and message_line.strip() != "message:"
-        return ft.Container(
-            content=ft.Text(message_line),
+
+        if not tooltip_message:
+            return ft.Container(
+                content=ft.Text(message_line),
+                on_click=make_copy_handler(page, "Message", message_line) if can_copy else None,
+                ink=can_copy,
+            )
+
+        decryption_explanation = f"The message was successfully decrypted using:\n{tooltip_message}"
+
+        return build_tooltip_text(
+            "message",
+            message_line,
+            decryption_explanation,
+            full_value=None,
             on_click=make_copy_handler(page, "Message", message_line) if can_copy else None,
-            ink=can_copy,
         )
 
     def _is_actor(target: str, sender: str, receiver: str) -> bool:
@@ -163,10 +175,19 @@ def build_timeline(
             return f"message: {recipient_decrypted or plaintext_text}"
         return f"message: {cipher_text}"
 
-    def _build_entry_container(row: ft.Row, dh: str, pn, n, message_line: str, border: ft.Border | None = None, bgcolor: str | None = None) -> ft.Container:
+    def _build_entry_container(
+        row: ft.Row,
+        dh: str,
+        pn,
+        n,
+        message_line: str,
+        border: ft.Border | None = None,
+        bgcolor: str | None = None,
+        message_tooltip: str = "",
+    ) -> ft.Container:
         return ft.Container(
             content=ft.Column(
-                controls=[row, _build_header_row(dh, pn, n), _build_message_text(message_line)],
+                controls=[row, _build_header_row(dh, pn, n), _build_message_text(message_line, message_tooltip)],
                 spacing=2,
                 tight=True,
             ),
@@ -193,6 +214,7 @@ def build_timeline(
         i = seq_id
         border = None
         bgcolor = None
+        message_tooltip = ""
         if kind == "received":
             msg = entry
             sender = msg.sender
@@ -215,6 +237,7 @@ def build_timeline(
                 if analysis:
                     if analysis["decryptable"]:
                         message_line = f"message (decrypted): {analysis['plaintext']}"
+                        message_tooltip = str(analysis.get("source", ""))
                         border = ft.Border.all(1, ft.Colors.GREEN)
                         bgcolor = ft.Colors.GREEN_ACCENT_100
                     else:
@@ -243,7 +266,7 @@ def build_timeline(
                     )
                 )
             row = ft.Row(controls=row_controls, alignment=ft.MainAxisAlignment.START)
-            col.controls.append(_build_entry_container(row, dh, pn, n, message_line, border, bgcolor))
+            col.controls.append(_build_entry_container(row, dh, pn, n, message_line, border, bgcolor, message_tooltip))
 
         else:  # pending
             pending = entry

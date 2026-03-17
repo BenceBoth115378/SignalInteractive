@@ -4,7 +4,8 @@ from typing import Any, Callable
 
 import flet as ft
 
-from components.data_classes import DoubleRatchetState, Header
+from components.data_classes import DHKeyPair, DoubleRatchetState, Header
+from modules.base_view import last_n_chars
 from modules.double_ratchet import external as ext
 
 
@@ -164,6 +165,13 @@ def _decode_plaintext(value: Any) -> str:
     return ""
 
 
+def _format_source_value(value: Any) -> str:
+    tail_len = 8
+    if isinstance(value, bytes):
+        return last_n_chars(value.hex(), tail_len)
+    return last_n_chars(str(value), tail_len)
+
+
 def _try_decrypt_with_message_key(entry: dict[str, Any], mk: bytes) -> str:
     header = entry.get("header")
     cipher = entry.get("cipher")
@@ -188,6 +196,30 @@ def _derive_chain_message_key(chain_key: bytes, step_count: int) -> bytes | None
     for _ in range(step_count):
         current_ck, mk = ext.KDF_CK(current_ck)
     return mk
+
+
+def _derive_chains_from_dh_private_and_rk(
+    dh_private: str,
+    own_public: str,
+    remote_public: str,
+    root_key: bytes,
+) -> tuple[bytes, bytes] | None:
+    if not isinstance(dh_private, str) or not dh_private:
+        return None
+    if not isinstance(remote_public, str) or not remote_public:
+        return None
+    if not isinstance(root_key, bytes) or not root_key:
+        return None
+
+    try:
+        dh_pair = DHKeyPair(private=dh_private, public=own_public)
+        dh_out = ext.DH(dh_pair, remote_public)
+        rk_after_recv, recv_chain = ext.KDF_RK(root_key, dh_out)
+        _, send_chain = ext.KDF_RK(rk_after_recv, dh_out)
+    except ValueError:
+        return None
+
+    return recv_chain, send_chain
 
 
 def decrypt_with_attacker_selection(
@@ -225,9 +257,17 @@ def decrypt_with_attacker_selection(
         result["plaintext"] = plaintext
         result["source"] = source
 
+    rk_by_party = {
+        secret.get("party"): secret
+        for secret in compromised_secrets.values()
+        if secret.get("kind") == "rk" and isinstance(secret.get("party"), str)
+    }
+
     chain_cache: dict[tuple[str, int], bytes | None] = {}
+    dh_chain_cache: dict[str, tuple[bytes, bytes] | None] = {}
     for secret in compromised_secrets.values():
         kind = secret.get("kind")
+        party = secret.get("party")
         if kind == "mk":
             for entry in messages:
                 plaintext = _try_decrypt_with_message_key(entry, secret.get("value"))
@@ -235,49 +275,155 @@ def decrypt_with_attacker_selection(
                     mark_decryptable(entry, plaintext, str(secret.get("label", "MK")))
             continue
 
-        if kind != "ck":
-            continue
-
-        party = secret.get("party")
-        direction = secret.get("direction")
-        public_key = secret.get("public") if direction == "send" else secret.get("remote_public")
-        start_n = secret.get("start_n")
-        if not isinstance(party, str) or direction not in {"send", "recv"}:
-            continue
-        if not isinstance(public_key, str) or not public_key:
-            continue
-        if not isinstance(start_n, int):
-            continue
-
-        for entry in messages:
-            header = entry.get("header")
-            if not isinstance(header, Header):
+        elif kind == "ck":
+            direction = secret.get("direction")
+            public_key = secret.get("public") if direction == "send" else secret.get("remote_public")
+            start_n = secret.get("start_n")
+            if not isinstance(party, str) or direction not in {"send", "recv"}:
                 continue
-            if direction == "send":
-                if entry.get("sender") != party:
+            if not isinstance(public_key, str) or not public_key:
+                continue
+            if not isinstance(start_n, int):
+                continue
+
+            for entry in messages:
+                header = entry.get("header")
+                if not isinstance(header, Header):
                     continue
-            else:
-                if entry.get("receiver") != party:
+                if direction == "send":
+                    if entry.get("sender") != party:
+                        continue
+                else:
+                    if entry.get("receiver") != party:
+                        continue
+                if header.dh != public_key:
                     continue
-            if header.dh != public_key:
-                continue
-            if header.n < start_n:
+                if header.n < start_n:
+                    continue
+
+                step_count = header.n - start_n + 1
+                cache_key = (str(secret.get("id", "")), step_count)
+                if cache_key not in chain_cache:
+                    chain_cache[cache_key] = _derive_chain_message_key(secret.get("value"), step_count)
+                mk = chain_cache[cache_key]
+                if mk is None:
+                    continue
+
+                plaintext = _try_decrypt_with_message_key(entry, mk)
+                if plaintext:
+                    mark_decryptable(
+                        entry,
+                        plaintext,
+                        f"{secret.get('label', 'CK')} -> KDF_CK step {step_count}",
+                    )
+
+        elif kind == "dh_private":
+            if not isinstance(party, str):
                 continue
 
-            step_count = header.n - start_n + 1
-            cache_key = (str(secret.get("id", "")), step_count)
-            if cache_key not in chain_cache:
-                chain_cache[cache_key] = _derive_chain_message_key(secret.get("value"), step_count)
-            mk = chain_cache[cache_key]
-            if mk is None:
+            rk_secret = rk_by_party.get(party)
+            if rk_secret is None:
                 continue
 
-            plaintext = _try_decrypt_with_message_key(entry, mk)
-            if plaintext:
+            compromised_public = secret.get("public")
+            remote_public = secret.get("remote_public")
+            start_send_n = secret.get("start_send_n")
+            start_recv_n = secret.get("start_recv_n")
+            if not isinstance(compromised_public, str) or not compromised_public:
+                continue
+            if not isinstance(remote_public, str) or not remote_public:
+                continue
+            if not isinstance(start_send_n, int) or not isinstance(start_recv_n, int):
+                continue
+
+            secret_id = str(secret.get("id", ""))
+            send_chain_key_id = f"{secret_id}:remote:{remote_public}"
+            if send_chain_key_id not in dh_chain_cache:
+                dh_chain_cache[send_chain_key_id] = _derive_chains_from_dh_private_and_rk(
+                    str(secret.get("value", "")),
+                    compromised_public,
+                    remote_public,
+                    rk_secret.get("value"),
+                )
+            send_context_chains = dh_chain_cache[send_chain_key_id]
+
+            for entry in messages:
+                header = entry.get("header")
+                if not isinstance(header, Header):
+                    continue
+
+                send_match = all([
+                    entry.get("sender") == party,
+                    header.dh == compromised_public,
+                    header.n >= start_send_n,
+                ])
+                recv_match = entry.get("receiver") == party
+
+                if send_match:
+                    if send_context_chains is None:
+                        continue
+                    _, send_chain = send_context_chains
+                    step_count = header.n - start_send_n + 1
+                    if step_count < 1:
+                        continue
+                    cache_key = (f"{secret_id}:dh:send:{remote_public}", step_count)
+                    if cache_key not in chain_cache:
+                        chain_cache[cache_key] = _derive_chain_message_key(send_chain, step_count)
+                    mk = chain_cache[cache_key]
+                    if mk is None:
+                        continue
+                    plaintext = _try_decrypt_with_message_key(entry, mk)
+                    if not plaintext:
+                        continue
+                    dh_priv_value = _format_source_value(secret.get("value"))
+                    rk_value = _format_source_value(rk_secret.get("value"))
+                    peer_dh_value = _format_source_value(remote_public)
+                    send_chain_value = _format_source_value(send_chain)
+                    mark_decryptable(
+                        entry,
+                        plaintext,
+                        f"KDF(DH(dh_priv={dh_priv_value}, dh_pub={peer_dh_value}), rk={rk_value}) -> ck({send_chain_value}) + step({step_count})",
+                    )
+                    continue
+
+                if not recv_match:
+                    continue
+
+                remote_dh_from_header = header.dh
+                recv_chain_key_id = f"{secret_id}:remote:{remote_dh_from_header}"
+                if recv_chain_key_id not in dh_chain_cache:
+                    dh_chain_cache[recv_chain_key_id] = _derive_chains_from_dh_private_and_rk(
+                        str(secret.get("value", "")),
+                        compromised_public,
+                        remote_dh_from_header,
+                        rk_secret.get("value"),
+                    )
+                recv_context_chains = dh_chain_cache[recv_chain_key_id]
+                if recv_context_chains is None:
+                    continue
+                recv_chain, _ = recv_context_chains
+
+                # For a ratchet receive chain identified by header.dh, n starts at 0.
+                step_count = header.n + 1
+                cache_key = (f"{secret_id}:dh:recv:{remote_dh_from_header}", step_count)
+                if cache_key not in chain_cache:
+                    chain_cache[cache_key] = _derive_chain_message_key(recv_chain, step_count)
+                mk = chain_cache[cache_key]
+                if mk is None:
+                    continue
+                plaintext = _try_decrypt_with_message_key(entry, mk)
+                if not plaintext:
+                    continue
+
+                dh_priv_value = _format_source_value(secret.get("value"))
+                rk_value = _format_source_value(rk_secret.get("value"))
+                peer_dh_value = _format_source_value(remote_dh_from_header)
+                recv_chain_value = _format_source_value(recv_chain)
+
                 mark_decryptable(
                     entry,
                     plaintext,
-                    f"{secret.get('label', 'CK')} -> KDF_CK step {step_count}",
+                    f"KDF(DH(dh_priv={dh_priv_value}, dh_pub={peer_dh_value}), rk={rk_value}) -> ck({recv_chain_value}) + step({step_count})",
                 )
 
     return sorted(results, key=lambda item: int(item.get("id", 0)), reverse=True)
