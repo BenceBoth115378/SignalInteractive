@@ -449,12 +449,49 @@ def build_attacker_dashboard(
         first_token = label.split(" ", 1)[0] if label else "Other"
         return first_token if first_token in party_names else "Other"
 
-    def _option_grid_label(item: dict[str, Any]) -> str:
-        label = item.get("label", "")
-        owner = _option_owner(label)
-        if owner != "Other" and label.startswith(f"{owner} "):
-            return label[len(owner) + 1:]
-        return label
+    def _extract_key_number(item: dict[str, Any]) -> int:
+        key_id = str(item.get("id", ""))
+        try:
+            return int(key_id.rsplit(":", 1)[1])
+        except (IndexError, ValueError):
+            return 0
+
+    def _layout_label(item: dict[str, Any]) -> str:
+        kind = item.get("kind")
+        number = _extract_key_number(item)
+        if kind == "dh_private":
+            return f"DH#{number}"
+        if kind == "rk":
+            return f"RK#{number}"
+        if kind == "ck":
+            direction = item.get("direction")
+            if direction == "send":
+                return f"CKs#{number}"
+            if direction == "recv":
+                return f"CKr#{number}"
+            return f"CK#{number}"
+        return str(item.get("label", ""))
+
+    def _key_sort(item: dict[str, Any]) -> tuple[int, int]:
+        kind_rank = {
+            "dh_private": 0,
+            "rk": 1,
+            "ck": 2,
+            "mk": 3,
+        }.get(str(item.get("kind", "")), 99)
+        return (kind_rank, _extract_key_number(item))
+
+    def _checkbox_cell(item: dict[str, Any]) -> ft.Control:
+        return ft.Container(
+            content=ft.Checkbox(
+                label=_layout_label(item),
+                value=item["id"] in active_selected,
+                on_change=lambda e, kid=item["id"]: update_selection(kid, bool(e.control.value)),
+            ),
+            tooltip=item.get("context", ""),
+            width=140,
+            padding=ft.Padding.only(right=6),
+        )
 
     def update_selection(key_id: str, checked: bool) -> None:
         updated = dict(compromised_secrets)
@@ -502,8 +539,6 @@ def build_attacker_dashboard(
         for item in options:
             grouped.setdefault(_option_owner(item["label"]), []).append(item)
 
-        column_count = 4
-
         for owner in (session.initializer.name, session.responder.name, "Other"):
             owner_items = grouped.get(owner, [])
             if not owner_items:
@@ -512,30 +547,35 @@ def build_attacker_dashboard(
             key_selector_controls.append(ft.Divider(height=8))
             key_selector_controls.append(ft.Text(owner, weight="bold", size=12))
 
-            for start in range(0, len(owner_items), column_count):
-                chunk = owner_items[start: start + column_count]
-                cells: list[ft.Control] = []
+            if owner in {session.initializer.name, session.responder.name}:
+                dh_and_rk = sorted(
+                    [item for item in owner_items if item.get("kind") in {"dh_private", "rk"}],
+                    key=_key_sort,
+                )
+                ck_send = sorted(
+                    [item for item in owner_items if item.get("kind") == "ck" and item.get("direction") == "send"],
+                    key=_key_sort,
+                )
+                ck_recv = sorted(
+                    [item for item in owner_items if item.get("kind") == "ck" and item.get("direction") == "recv"],
+                    key=_key_sort,
+                )
 
-                for item in chunk:
-                    cells.append(
-                        ft.Container(
-                            content=ft.Checkbox(
-                                label=_option_grid_label(item),
-                                value=item["id"] in active_selected,
-                                on_change=lambda e, kid=item["id"]: update_selection(kid, bool(e.control.value)),
-                            ),
-                            tooltip=item.get("context", ""),
-                            width=220,
-                            padding=ft.Padding.only(right=6),
+                for row_items in (dh_and_rk, ck_send, ck_recv):
+                    if not row_items:
+                        continue
+                    key_selector_controls.append(
+                        ft.Row(
+                            controls=[_checkbox_cell(item) for item in row_items],
+                            wrap=True,
+                            vertical_alignment=ft.CrossAxisAlignment.START,
                         )
                     )
-
-                while len(cells) < column_count:
-                    cells.append(ft.Container(width=220))
-
+            else:
+                other_items = sorted(owner_items, key=_key_sort)
                 key_selector_controls.append(
                     ft.Row(
-                        controls=cells,
+                        controls=[_checkbox_cell(item) for item in other_items],
                         wrap=True,
                         vertical_alignment=ft.CrossAxisAlignment.START,
                     )
@@ -551,5 +591,4 @@ def build_attacker_dashboard(
         padding=10,
         border=ft.Border.all(color=ft.Colors.OUTLINE),
         border_radius=8,
-        height=330,
     )
