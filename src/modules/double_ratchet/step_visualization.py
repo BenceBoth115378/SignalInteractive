@@ -40,7 +40,7 @@ def _tooltip_with_full_value(message: str | None, full_value: Any = None) -> str
     if full_value is not None:
         if parts:
             parts.append("\n────────────\n")
-        parts.append(f"Key value:\n{_to_text(full_value)}")
+        parts.append(f"Full value:\n{_to_text(full_value)}")
     if not parts:
         return None
     return "".join(parts)
