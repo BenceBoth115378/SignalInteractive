@@ -412,6 +412,7 @@ def decrypt_with_attacker_selection(
                         "rk_id": rk_id,
                         "rk_value": current_rk,
                         "dh_id": next_dh_id,
+                        "prev_dh_id": dh_id,
                         "public": next_pub,
                         "peer_public": peer_pub,
                         "prev_dh_private": local_priv,
@@ -489,6 +490,21 @@ def decrypt_with_attacker_selection(
                     return value
             return None
 
+        def _latest_rk_after_for_recv_context(prev_dh_id: str, peer_public: str) -> bytes | None:
+            prefix = (
+                f"iter:{ctx.get('party')}:rk:{ctx.get('rk_id')}:dh:{prev_dh_id}:"
+            )
+            suffix = f":recv_chain_for_header:{peer_public}:rk_after"
+            for key in reversed(list(dh_chain_cache.keys())):
+                if not isinstance(key, str):
+                    continue
+                if not key.startswith(prefix) or not key.endswith(suffix):
+                    continue
+                value = dh_chain_cache.get(key)
+                if isinstance(value, bytes) and value:
+                    return value
+            return None
+
         if direction == "recv":
             dh_private = str(ctx.get("dh_private", ""))
             local_public = str(ctx.get("local_public", ""))
@@ -513,10 +529,12 @@ def decrypt_with_attacker_selection(
                     try:
                         local_pair = DHKeyPair(private=dh_private, public=local_public)
                         dh_out_recv = ext.DH(local_pair, header.dh)
-                        _, recv_chain_for_header = ext.KDF_RK(rk_value, dh_out_recv)
+                        rk_after_recv, recv_chain_for_header = ext.KDF_RK(rk_value, dh_out_recv)
                         dh_chain_cache[recv_chain_cache_key] = recv_chain_for_header
+                        dh_chain_cache[f"{recv_chain_cache_key}:rk_after"] = rk_after_recv
                     except ValueError:
                         dh_chain_cache[recv_chain_cache_key] = None
+                        dh_chain_cache[f"{recv_chain_cache_key}:rk_after"] = None
 
             recv_chain_for_header = dh_chain_cache[recv_chain_cache_key]
             if not isinstance(recv_chain_for_header, bytes):
@@ -537,7 +555,9 @@ def decrypt_with_attacker_selection(
                 prev_dh_public = str(ctx.get("prev_dh_public", ""))
                 next_dh_private = str(ctx.get("next_dh_private", ""))
                 next_dh_public = str(ctx.get("next_dh_public", ""))
+                prev_dh_id = str(ctx.get("prev_dh_id", ""))
                 rk_value = ctx.get("rk_value")
+                rk_after_recv_seed = _latest_rk_after_for_recv_context(prev_dh_id, peer_public_for_send)
 
                 if not all([prev_dh_private, prev_dh_public, next_dh_private, next_dh_public]) or not isinstance(rk_value, bytes) or not rk_value:
                     dh_chain_cache[send_chain_cache_key] = None
@@ -546,8 +566,10 @@ def decrypt_with_attacker_selection(
                         prev_pair = DHKeyPair(private=prev_dh_private, public=prev_dh_public)
                         next_pair = DHKeyPair(private=next_dh_private, public=next_dh_public)
 
-                        dh_out_recv = ext.DH(prev_pair, peer_public_for_send)
-                        rk_after_recv, _ = ext.KDF_RK(rk_value, dh_out_recv)
+                        rk_after_recv = rk_after_recv_seed
+                        if not isinstance(rk_after_recv, bytes) or not rk_after_recv:
+                            dh_out_recv = ext.DH(prev_pair, peer_public_for_send)
+                            rk_after_recv, _ = ext.KDF_RK(rk_value, dh_out_recv)
 
                         dh_out_send = ext.DH(next_pair, peer_public_for_send)
                         rk_after_send, send_chain_for_peer = ext.KDF_RK(rk_after_recv, dh_out_send)
