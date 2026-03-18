@@ -481,6 +481,7 @@ class DoubleRatchetModule(BaseModule):
         send_step_visualization_checkbox = ft.Checkbox(label="Show sending ratchet step visualization", value=False)
         receive_step_visualization_checkbox = ft.Checkbox(label="Show receiving ratchet step visualization", value=False)
         auto_receive_checkbox = ft.Checkbox(label="Auto receive", value=False)
+        auto_receive_user_enabled = bool(auto_receive_checkbox.value)
         alice_input = ft.TextField(dense=True, expand=True)
         bob_input = ft.TextField(dense=True, expand=True)
         visual_container = ft.Container(expand=True)
@@ -510,11 +511,22 @@ class DoubleRatchetModule(BaseModule):
         def show_receive_step_visualization(step_data: ReceiveStepVisualizationSnapshot) -> None:
             show_receiving_step_visualization_dialog(page, step_data)
 
-        def _should_auto_receive() -> bool:
-            return app_state.perspective == "attacker" or bool(auto_receive_checkbox.value)
+        def _is_attacker_perspective() -> bool:
+            return app_state.perspective == "attacker"
+
+        def _effective_auto_receive_enabled() -> bool:
+            return _is_attacker_perspective() or auto_receive_user_enabled
+
+        def _sync_auto_receive_checkbox_state() -> None:
+            if _is_attacker_perspective():
+                auto_receive_checkbox.value = True
+                auto_receive_checkbox.disabled = True
+                return
+            auto_receive_checkbox.value = auto_receive_user_enabled
+            auto_receive_checkbox.disabled = False
 
         def _auto_receive_if_enabled(step_data: SendStepVisualizationSnapshot | None = None) -> None:
-            if not _should_auto_receive():
+            if not _effective_auto_receive_enabled():
                 return
             if step_data is not None:
                 self.receive_message(step_data.receiver, step_data.pending_id)
@@ -523,6 +535,7 @@ class DoubleRatchetModule(BaseModule):
                 self._auto_receive_all_pending()
 
         def refresh_view() -> None:
+            _sync_auto_receive_checkbox_state()
             _auto_receive_if_enabled()
             message_count.value = f"Messages exchanged: {len(self.session.message_log)}"
             alice_input.hint_text = self._build_hint_message("alice")
@@ -622,6 +635,9 @@ class DoubleRatchetModule(BaseModule):
             show_warning(self._build_initializer_switch_warning("", ""))
 
         def on_auto_receive_changed(e) -> None:
+            nonlocal auto_receive_user_enabled
+            if not _is_attacker_perspective():
+                auto_receive_user_enabled = bool(auto_receive_checkbox.value)
             refresh_view()
             page.update()
 
