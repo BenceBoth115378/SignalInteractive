@@ -377,28 +377,33 @@ def decrypt_with_attacker_selection(
                 send_start_n = int(next_dh.get("start_send_n", 0))
                 next_dh_id = str(next_dh.get("id", ""))
 
+                send_chain: bytes = b""
+                rk_after_send: bytes | None = None
                 send_chain_cache_key = (
                     f"iter:{party}:rk:{rk_id}:from:{dh_id}:to:{next_dh_id}:send_chain:{peer_pub}"
                 )
-                if send_chain_cache_key not in dh_chain_cache:
-                    try:
-                        local_pair = DHKeyPair(private=local_priv, public=local_pub)
-                        dh_out_recv = ext.DH(local_pair, peer_pub)
-                        rk_after_recv, _ = ext.KDF_RK(current_rk, dh_out_recv)
+                if peer_pub:
+                    if send_chain_cache_key not in dh_chain_cache:
+                        try:
+                            local_pair = DHKeyPair(private=local_priv, public=local_pub)
+                            dh_out_recv = ext.DH(local_pair, peer_pub)
+                            rk_after_recv, _ = ext.KDF_RK(current_rk, dh_out_recv)
 
-                        next_pair = DHKeyPair(private=next_priv, public=next_pub)
-                        dh_out_send = ext.DH(next_pair, peer_pub)
-                        rk_after_send, send_chain = ext.KDF_RK(rk_after_recv, dh_out_send)
-                        dh_chain_cache[send_chain_cache_key] = send_chain
-                        dh_chain_cache[f"{send_chain_cache_key}:rk_after"] = rk_after_send
-                    except ValueError:
-                        dh_chain_cache[send_chain_cache_key] = None
-                        dh_chain_cache[f"{send_chain_cache_key}:rk_after"] = None
+                            next_pair = DHKeyPair(private=next_priv, public=next_pub)
+                            dh_out_send = ext.DH(next_pair, peer_pub)
+                            rk_after_send, send_chain = ext.KDF_RK(rk_after_recv, dh_out_send)
+                            dh_chain_cache[send_chain_cache_key] = send_chain
+                            dh_chain_cache[f"{send_chain_cache_key}:rk_after"] = rk_after_send
+                        except ValueError:
+                            dh_chain_cache[send_chain_cache_key] = None
+                            dh_chain_cache[f"{send_chain_cache_key}:rk_after"] = None
 
-                send_chain = dh_chain_cache[send_chain_cache_key]
-                rk_after_send = dh_chain_cache[f"{send_chain_cache_key}:rk_after"]
-                if not isinstance(send_chain, bytes) or not isinstance(rk_after_send, bytes):
-                    continue
+                    cached_chain = dh_chain_cache.get(send_chain_cache_key)
+                    cached_rk_after = dh_chain_cache.get(f"{send_chain_cache_key}:rk_after")
+                    if isinstance(cached_chain, bytes):
+                        send_chain = cached_chain
+                    if isinstance(cached_rk_after, bytes):
+                        rk_after_send = cached_rk_after
 
                 send_contexts.append(
                     {
@@ -417,7 +422,8 @@ def decrypt_with_attacker_selection(
                         "start_n": send_start_n,
                     }
                 )
-                current_rk = rk_after_send
+                if isinstance(rk_after_send, bytes):
+                    current_rk = rk_after_send
 
         return recv_contexts, send_contexts
 
@@ -468,15 +474,39 @@ def decrypt_with_attacker_selection(
         cache_key = (base_cache_key, step_count)
         send_chain_cache_key = ""
 
+        def _latest_rk_after_for_send_context() -> bytes | None:
+            prefix = (
+                f"iter:{ctx.get('party')}:rk:{ctx.get('rk_id')}:dh:{ctx.get('dh_id')}:"
+                "send_chain_for_peer:"
+            )
+            for key in reversed(list(dh_chain_cache.keys())):
+                if not isinstance(key, str):
+                    continue
+                if not key.startswith(prefix) or not key.endswith(":rk_after"):
+                    continue
+                value = dh_chain_cache.get(key)
+                if isinstance(value, bytes) and value:
+                    return value
+            return None
+
         if direction == "recv":
+            dh_private = str(ctx.get("dh_private", ""))
+            local_public = str(ctx.get("local_public", ""))
+            rk_value = _latest_rk_after_for_send_context()
+            if not isinstance(rk_value, bytes) or not rk_value:
+                rk_value = ctx.get("rk_value")
+
+            rk_tag = ""
+            if isinstance(rk_value, bytes) and rk_value:
+                rk_tag = _format_source_value(rk_value)
+
             recv_chain_cache_key = (
                 f"iter:{ctx.get('party')}:rk:{ctx.get('rk_id')}:dh:{ctx.get('dh_id')}:"
-                f"recv_chain_for_header:{header.dh}"
+                f"rk_tag:{rk_tag}:recv_chain_for_header:{header.dh}"
             )
+            cache_key = (f"{base_cache_key}:rk_tag:{rk_tag}", step_count)
+
             if recv_chain_cache_key not in dh_chain_cache:
-                dh_private = str(ctx.get("dh_private", ""))
-                local_public = str(ctx.get("local_public", ""))
-                rk_value = ctx.get("rk_value")
                 if not dh_private or not local_public or not isinstance(rk_value, bytes) or not rk_value:
                     dh_chain_cache[recv_chain_cache_key] = None
                 else:
@@ -544,9 +574,13 @@ def decrypt_with_attacker_selection(
 
         chain_source = ctx.get("chain")
         if direction == "recv":
+            rk_value = _latest_rk_after_for_send_context()
+            if not isinstance(rk_value, bytes) or not rk_value:
+                rk_value = ctx.get("rk_value")
+            rk_tag = _format_source_value(rk_value) if isinstance(rk_value, bytes) and rk_value else ""
             recv_chain_cache_key = (
                 f"iter:{ctx.get('party')}:rk:{ctx.get('rk_id')}:dh:{ctx.get('dh_id')}:"
-                f"recv_chain_for_header:{header.dh}"
+                f"rk_tag:{rk_tag}:recv_chain_for_header:{header.dh}"
             )
             chain_source = dh_chain_cache.get(recv_chain_cache_key)
         elif send_chain_cache_key:
