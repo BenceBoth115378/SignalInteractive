@@ -207,61 +207,6 @@ def _derive_chain_message_key(chain_key: bytes, step_count: int) -> bytes | None
     return mk
 
 
-def _derive_receive_chain_from_dh_private_and_rk(
-    dh_private: str,
-    own_public: str,
-    remote_public: str,
-    root_key: bytes,
-) -> bytes | None:
-    if not isinstance(dh_private, str) or not dh_private:
-        return None
-    if not isinstance(remote_public, str) or not remote_public:
-        return None
-    if not isinstance(root_key, bytes) or not root_key:
-        return None
-
-    try:
-        dh_pair = DHKeyPair(private=dh_private, public=own_public)
-        dh_out = ext.DH(dh_pair, remote_public)
-        _, recv_chain = ext.KDF_RK(root_key, dh_out)
-    except ValueError:
-        return None
-
-    return recv_chain
-
-
-def _derive_send_chain_from_two_dh_privates_and_rk(
-    old_dh_private: str,
-    old_public: str,
-    next_dh_private: str,
-    next_public: str,
-    remote_public: str,
-    root_key: bytes,
-) -> bytes | None:
-    if not isinstance(old_dh_private, str) or not old_dh_private:
-        return None
-    if not isinstance(next_dh_private, str) or not next_dh_private:
-        return None
-    if not isinstance(remote_public, str) or not remote_public:
-        return None
-    if not isinstance(root_key, bytes) or not root_key:
-        return None
-
-    try:
-        old_pair = DHKeyPair(private=old_dh_private, public=old_public)
-        next_pair = DHKeyPair(private=next_dh_private, public=next_public)
-
-        dh_out_recv = ext.DH(old_pair, remote_public)
-        rk_after_recv, _ = ext.KDF_RK(root_key, dh_out_recv)
-
-        dh_out_send = ext.DH(next_pair, remote_public)
-        _, send_chain = ext.KDF_RK(rk_after_recv, dh_out_send)
-    except ValueError:
-        return None
-
-    return send_chain
-
-
 def decrypt_with_attacker_selection(
     session: DoubleRatchetState,
     pending_messages: list[dict[str, Any]],
@@ -297,11 +242,15 @@ def decrypt_with_attacker_selection(
         result["plaintext"] = plaintext
         result["source"] = source
 
-    rk_by_party = {
-        secret.get("party"): secret
-        for secret in compromised_secrets.values()
-        if secret.get("kind") == "rk" and isinstance(secret.get("party"), str)
-    }
+    rk_by_party: dict[str, list[dict[str, Any]]] = {}
+    for candidate_secret in compromised_secrets.values():
+        if candidate_secret.get("kind") != "rk":
+            continue
+        party_name = candidate_secret.get("party")
+        if not isinstance(party_name, str):
+            continue
+        rk_by_party.setdefault(party_name, []).append(candidate_secret)
+
     dh_by_party = {
         party_name: [
             secret
@@ -313,191 +262,375 @@ def decrypt_with_attacker_selection(
 
     chain_cache: dict[tuple[str, int], bytes | None] = {}
     dh_chain_cache: dict[str, bytes | None] = {}
+
+    def _process_mk_secret(secret: dict[str, Any]) -> None:
+        for entry in messages:
+            plaintext = _try_decrypt_with_message_key(entry, secret.get("value"))
+            if plaintext:
+                mark_decryptable(entry, plaintext, str(secret.get("label", "MK")))
+
+    def _process_ck_secret(secret: dict[str, Any], party: str) -> None:
+        kind = secret.get("kind")
+        direction = secret.get("direction")
+        if direction not in {"send", "recv"}:
+            if kind == "cks":
+                direction = "send"
+            elif kind == "ckr":
+                direction = "recv"
+        public_key = secret.get("public") if direction == "send" else secret.get("remote_public")
+        start_n = secret.get("start_n")
+        if direction not in {"send", "recv"}:
+            return
+        if not isinstance(public_key, str) or not public_key:
+            return
+        if not isinstance(start_n, int):
+            return
+
+        for entry in messages:
+            header = entry.get("header")
+            if not isinstance(header, Header):
+                continue
+            if direction == "send" and entry.get("sender") != party:
+                continue
+            if direction == "recv" and entry.get("receiver") != party:
+                continue
+            if header.dh != public_key or header.n < start_n:
+                continue
+
+            step_count = header.n - start_n + 1
+            cache_key = (str(secret.get("id", "")), step_count)
+            if cache_key not in chain_cache:
+                chain_cache[cache_key] = _derive_chain_message_key(secret.get("value"), step_count)
+            mk = chain_cache[cache_key]
+            if mk is None:
+                continue
+            plaintext = _try_decrypt_with_message_key(entry, mk)
+            if plaintext:
+                mark_decryptable(entry, plaintext, f"{secret.get('label', 'CK')} -> KDF_CK step {step_count}")
+                continue
+
+    def _build_dh_sequence(party: str) -> list[dict[str, Any]]:
+        sequence = [
+            secret
+            for secret in dh_by_party.get(party, [])
+            if isinstance(secret.get("public"), str)
+            if bool(secret.get("public"))
+            if isinstance(secret.get("start_send_n"), int)
+            if isinstance(secret.get("start_recv_n"), int)
+            if isinstance(secret.get("value"), str)
+            if bool(secret.get("value"))
+        ]
+        sequence.sort(
+            key=lambda s: (
+                int(s.get("start_send_n", 0)),
+                int(s.get("start_recv_n", 0)),
+                str(s.get("id", "")),
+            )
+        )
+        return sequence
+
+    def _derive_dh_contexts_for_party(
+        party: str,
+        rk_candidates: list[dict[str, Any]],
+        dh_sequence: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        recv_contexts: list[dict[str, Any]] = []
+        send_contexts: list[dict[str, Any]] = []
+
+        for rk_secret in rk_candidates:
+            rk_value = rk_secret.get("value")
+            if not isinstance(rk_value, bytes) or not rk_value:
+                continue
+
+            current_rk = rk_value
+            rk_id = str(rk_secret.get("id", ""))
+
+            for idx, dh_secret in enumerate(dh_sequence):
+                local_priv = str(dh_secret.get("value", ""))
+                local_pub = str(dh_secret.get("public", ""))
+                peer_pub = str(dh_secret.get("remote_public", ""))
+                # DH-derived receive chains start at header.n == 0 for the corresponding peer DH key.
+                # `start_recv_n` in state history can be post-receive and off by one for derivation steps.
+                recv_start_n = 0
+                dh_id = str(dh_secret.get("id", ""))
+
+                recv_contexts.append(
+                    {
+                        "party": party,
+                        "direction": "recv",
+                        "rk_id": rk_id,
+                        "rk_value": current_rk,
+                        "dh_id": dh_id,
+                        "dh_private": local_priv,
+                        "local_public": local_pub,
+                        "chain": b"",
+                        "start_n": recv_start_n,
+                    }
+                )
+
+                if idx + 1 >= len(dh_sequence):
+                    continue
+
+                next_dh = dh_sequence[idx + 1]
+                next_priv = str(next_dh.get("value", ""))
+                next_pub = str(next_dh.get("public", ""))
+                send_start_n = int(next_dh.get("start_send_n", 0))
+                next_dh_id = str(next_dh.get("id", ""))
+
+                send_chain_cache_key = (
+                    f"iter:{party}:rk:{rk_id}:from:{dh_id}:to:{next_dh_id}:send_chain:{peer_pub}"
+                )
+                if send_chain_cache_key not in dh_chain_cache:
+                    try:
+                        local_pair = DHKeyPair(private=local_priv, public=local_pub)
+                        dh_out_recv = ext.DH(local_pair, peer_pub)
+                        rk_after_recv, _ = ext.KDF_RK(current_rk, dh_out_recv)
+
+                        next_pair = DHKeyPair(private=next_priv, public=next_pub)
+                        dh_out_send = ext.DH(next_pair, peer_pub)
+                        rk_after_send, send_chain = ext.KDF_RK(rk_after_recv, dh_out_send)
+                        dh_chain_cache[send_chain_cache_key] = send_chain
+                        dh_chain_cache[f"{send_chain_cache_key}:rk_after"] = rk_after_send
+                    except ValueError:
+                        dh_chain_cache[send_chain_cache_key] = None
+                        dh_chain_cache[f"{send_chain_cache_key}:rk_after"] = None
+
+                send_chain = dh_chain_cache[send_chain_cache_key]
+                rk_after_send = dh_chain_cache[f"{send_chain_cache_key}:rk_after"]
+                if not isinstance(send_chain, bytes) or not isinstance(rk_after_send, bytes):
+                    continue
+
+                send_contexts.append(
+                    {
+                        "party": party,
+                        "direction": "send",
+                        "rk_id": rk_id,
+                        "rk_value": current_rk,
+                        "dh_id": next_dh_id,
+                        "public": next_pub,
+                        "peer_public": peer_pub,
+                        "prev_dh_private": local_priv,
+                        "prev_dh_public": local_pub,
+                        "next_dh_private": next_priv,
+                        "next_dh_public": next_pub,
+                        "chain": send_chain,
+                        "start_n": send_start_n,
+                    }
+                )
+                current_rk = rk_after_send
+
+        return recv_contexts, send_contexts
+
+    def _iter_matching_dh_contexts(
+        contexts: list[dict[str, Any]],
+        direction: str,
+        header: Header,
+    ) -> list[dict[str, Any]]:
+        if direction == "recv":
+            matching = [
+                ctx
+                for ctx in contexts
+                if isinstance(ctx.get("start_n"), int)
+                if header.n >= int(ctx.get("start_n"))
+            ]
+            matching.sort(key=lambda ctx: int(ctx.get("start_n", -1)), reverse=True)
+            return matching
+
+        key_name = "public"
+        matching = [
+            ctx
+            for ctx in contexts
+            if ctx.get(key_name) == header.dh
+            if isinstance(ctx.get("start_n"), int)
+            if header.n >= int(ctx.get("start_n"))
+        ]
+        matching.sort(key=lambda ctx: int(ctx.get("start_n", -1)), reverse=True)
+        return matching
+
+    def _try_decrypt_with_dh_context(
+        entry: dict[str, Any],
+        ctx: dict[str, Any],
+        direction: str,
+        peer_public_override: str | None = None,
+    ) -> bool:
+        header = entry.get("header")
+        if not isinstance(header, Header):
+            return False
+
+        start_n = ctx.get("start_n")
+        if not isinstance(start_n, int):
+            return False
+        step_count = header.n - start_n + 1
+        if step_count < 1:
+            return False
+
+        base_cache_key = f"iter:{ctx.get('party')}:rk:{ctx.get('rk_id')}:dh:{ctx.get('dh_id')}:{direction}:{header.dh}"
+        cache_key = (base_cache_key, step_count)
+        send_chain_cache_key = ""
+
+        if direction == "recv":
+            recv_chain_cache_key = (
+                f"iter:{ctx.get('party')}:rk:{ctx.get('rk_id')}:dh:{ctx.get('dh_id')}:"
+                f"recv_chain_for_header:{header.dh}"
+            )
+            if recv_chain_cache_key not in dh_chain_cache:
+                dh_private = str(ctx.get("dh_private", ""))
+                local_public = str(ctx.get("local_public", ""))
+                rk_value = ctx.get("rk_value")
+                if not dh_private or not local_public or not isinstance(rk_value, bytes) or not rk_value:
+                    dh_chain_cache[recv_chain_cache_key] = None
+                else:
+                    try:
+                        local_pair = DHKeyPair(private=dh_private, public=local_public)
+                        dh_out_recv = ext.DH(local_pair, header.dh)
+                        _, recv_chain_for_header = ext.KDF_RK(rk_value, dh_out_recv)
+                        dh_chain_cache[recv_chain_cache_key] = recv_chain_for_header
+                    except ValueError:
+                        dh_chain_cache[recv_chain_cache_key] = None
+
+            recv_chain_for_header = dh_chain_cache[recv_chain_cache_key]
+            if not isinstance(recv_chain_for_header, bytes):
+                return False
+            if cache_key not in chain_cache:
+                chain_cache[cache_key] = _derive_chain_message_key(recv_chain_for_header, step_count)
+        else:
+            send_chain = ctx.get("chain")
+            peer_public_for_send = peer_public_override if isinstance(peer_public_override, str) and peer_public_override else str(ctx.get("peer_public", ""))
+            send_chain_cache_key = (
+                f"iter:{ctx.get('party')}:rk:{ctx.get('rk_id')}:dh:{ctx.get('dh_id')}:"
+                f"send_chain_for_peer:{peer_public_for_send}"
+            )
+            cache_key = (f"{base_cache_key}:peer:{peer_public_for_send}", step_count)
+
+            if peer_public_for_send and send_chain_cache_key not in dh_chain_cache:
+                prev_dh_private = str(ctx.get("prev_dh_private", ""))
+                prev_dh_public = str(ctx.get("prev_dh_public", ""))
+                next_dh_private = str(ctx.get("next_dh_private", ""))
+                next_dh_public = str(ctx.get("next_dh_public", ""))
+                rk_value = ctx.get("rk_value")
+
+                if not all([prev_dh_private, prev_dh_public, next_dh_private, next_dh_public]) or not isinstance(rk_value, bytes) or not rk_value:
+                    dh_chain_cache[send_chain_cache_key] = None
+                else:
+                    try:
+                        prev_pair = DHKeyPair(private=prev_dh_private, public=prev_dh_public)
+                        next_pair = DHKeyPair(private=next_dh_private, public=next_dh_public)
+
+                        dh_out_recv = ext.DH(prev_pair, peer_public_for_send)
+                        rk_after_recv, _ = ext.KDF_RK(rk_value, dh_out_recv)
+
+                        dh_out_send = ext.DH(next_pair, peer_public_for_send)
+                        rk_after_send, send_chain_for_peer = ext.KDF_RK(rk_after_recv, dh_out_send)
+                        dh_chain_cache[send_chain_cache_key] = send_chain_for_peer
+                        dh_chain_cache[f"{send_chain_cache_key}:rk_after"] = rk_after_send
+                    except ValueError:
+                        dh_chain_cache[send_chain_cache_key] = None
+                        dh_chain_cache[f"{send_chain_cache_key}:rk_after"] = None
+
+            if peer_public_for_send and send_chain_cache_key in dh_chain_cache:
+                cached_send_chain = dh_chain_cache[send_chain_cache_key]
+                if isinstance(cached_send_chain, bytes):
+                    send_chain = cached_send_chain
+
+            if cache_key not in chain_cache:
+                chain_cache[cache_key] = _derive_chain_message_key(send_chain, step_count)
+        mk = chain_cache[cache_key]
+        if not isinstance(mk, bytes):
+            return False
+
+        plaintext = _try_decrypt_with_message_key(entry, mk)
+        if not plaintext:
+            return False
+
+        chain_source = ctx.get("chain")
+        if direction == "recv":
+            recv_chain_cache_key = (
+                f"iter:{ctx.get('party')}:rk:{ctx.get('rk_id')}:dh:{ctx.get('dh_id')}:"
+                f"recv_chain_for_header:{header.dh}"
+            )
+            chain_source = dh_chain_cache.get(recv_chain_cache_key)
+        elif send_chain_cache_key:
+            chain_source = dh_chain_cache.get(send_chain_cache_key, chain_source)
+        chain_value = _format_source_value(chain_source)
+        rk_value = _format_source_value(ctx.get("rk_value"))
+        peer_value = _format_source_value(header.dh)
+        chain_label = "CKs" if direction == "send" else "CKr"
+        source = (
+            f"iterative DH compromise: RK({rk_value}) -> {chain_label} on dh_pub={peer_value} "
+            f"(chain={chain_value}) + step({step_count})"
+        )
+        mark_decryptable(entry, plaintext, source)
+        return True
+
+    def _process_dh_secrets_iterative() -> None:
+        for party, rk_candidates in rk_by_party.items():
+            if not rk_candidates:
+                continue
+
+            dh_sequence = _build_dh_sequence(party)
+            if not dh_sequence:
+                continue
+
+            recv_contexts, send_contexts = _derive_dh_contexts_for_party(party, rk_candidates, dh_sequence)
+            if not recv_contexts and not send_contexts:
+                continue
+
+            observed_peer_headers: list[str] = []
+
+            for entry in messages:
+                result = result_lookup.get((entry["id"], entry["state"]))
+                if result is None or result.get("decryptable"):
+                    continue
+
+                header = entry.get("header")
+                if not isinstance(header, Header):
+                    continue
+
+                if entry.get("receiver") == party:
+                    if header.dh and header.dh not in observed_peer_headers:
+                        observed_peer_headers.append(header.dh)
+
+                if entry.get("receiver") == party:
+                    recv_matches = _iter_matching_dh_contexts(recv_contexts, direction="recv", header=header)
+                    for ctx in recv_matches:
+                        if _try_decrypt_with_dh_context(entry, ctx, "recv"):
+                            break
+
+                result = result_lookup.get((entry["id"], entry["state"]))
+                if result is None or result.get("decryptable"):
+                    continue
+
+                if entry.get("sender") == party:
+                    send_matches = _iter_matching_dh_contexts(send_contexts, direction="send", header=header)
+                    for ctx in send_matches:
+                        # Prefer peer DH publics seen in actual receive headers over stale compromise snapshots.
+                        peer_candidates = list(reversed(observed_peer_headers))
+                        fallback_peer = str(ctx.get("peer_public", ""))
+                        if fallback_peer and fallback_peer not in peer_candidates:
+                            peer_candidates.append(fallback_peer)
+
+                        decrypted = False
+                        for peer_public in peer_candidates:
+                            if _try_decrypt_with_dh_context(entry, ctx, "send", peer_public_override=peer_public):
+                                decrypted = True
+                                break
+                        if decrypted:
+                            break
+
     for secret in compromised_secrets.values():
         kind = secret.get("kind")
         party = secret.get("party")
+
         if kind == "mk":
-            for entry in messages:
-                plaintext = _try_decrypt_with_message_key(entry, secret.get("value"))
-                if plaintext:
-                    mark_decryptable(entry, plaintext, str(secret.get("label", "MK")))
+            _process_mk_secret(secret)
             continue
 
-        elif kind in {"ck", "cks", "ckr"}:
-            direction = secret.get("direction")
-            if direction not in {"send", "recv"}:
-                if kind == "cks":
-                    direction = "send"
-                elif kind == "ckr":
-                    direction = "recv"
-            public_key = secret.get("public") if direction == "send" else secret.get("remote_public")
-            start_n = secret.get("start_n")
-            if not isinstance(party, str) or direction not in {"send", "recv"}:
-                continue
-            if not isinstance(public_key, str) or not public_key:
-                continue
-            if not isinstance(start_n, int):
-                continue
+        if kind in {"ck", "cks", "ckr"}:
+            if isinstance(party, str):
+                _process_ck_secret(secret, party)
+            continue
 
-            for entry in messages:
-                header = entry.get("header")
-                if not isinstance(header, Header):
-                    continue
-                if direction == "send":
-                    if entry.get("sender") != party:
-                        continue
-                else:
-                    if entry.get("receiver") != party:
-                        continue
-                if header.dh != public_key:
-                    continue
-                if header.n < start_n:
-                    continue
-
-                step_count = header.n - start_n + 1
-                cache_key = (str(secret.get("id", "")), step_count)
-                if cache_key not in chain_cache:
-                    chain_cache[cache_key] = _derive_chain_message_key(secret.get("value"), step_count)
-                mk = chain_cache[cache_key]
-                if mk is None:
-                    continue
-
-                plaintext = _try_decrypt_with_message_key(entry, mk)
-                if plaintext:
-                    mark_decryptable(
-                        entry,
-                        plaintext,
-                        f"{secret.get('label', 'CK')} -> KDF_CK step {step_count}",
-                    )
-
-        elif kind == "dh_private":
-            if not isinstance(party, str):
-                continue
-
-            rk_secret = rk_by_party.get(party)
-            if rk_secret is None:
-                continue
-
-            compromised_public = secret.get("public")
-            if not isinstance(compromised_public, str) or not compromised_public:
-                continue
-
-            secret_id = str(secret.get("id", ""))
-            for entry in messages:
-                header = entry.get("header")
-                if not isinstance(header, Header):
-                    continue
-
-                send_match = all([
-                    entry.get("sender") == party,
-                    header.dh == secret.get("public"),
-                ])
-                if send_match:
-                    continue
-
-                send_candidates = [
-                    next_secret
-                    for next_secret in dh_by_party.get(party, [])
-                    if str(next_secret.get("id", "")) != secret_id
-                    if next_secret.get("public") == header.dh
-                    if isinstance(next_secret.get("start_send_n"), int)
-                    if header.n >= int(next_secret.get("start_send_n"))
-                ]
-
-                if entry.get("sender") == party and send_candidates:
-                    best_next_secret = max(
-                        send_candidates,
-                        key=lambda s: int(s.get("start_send_n", -1)),
-                    )
-                    remote_for_send = best_next_secret.get("remote_public")
-                    start_send_n = int(best_next_secret.get("start_send_n", 0))
-                    if isinstance(remote_for_send, str) and remote_for_send:
-                        send_chain_cache_key = (
-                            f"{secret_id}:next:{best_next_secret.get('id', '')}:remote:{remote_for_send}"
-                        )
-                        if send_chain_cache_key not in dh_chain_cache:
-                            dh_chain_cache[send_chain_cache_key] = _derive_send_chain_from_two_dh_privates_and_rk(
-                                str(secret.get("value", "")),
-                                str(secret.get("public", "")),
-                                str(best_next_secret.get("value", "")),
-                                str(best_next_secret.get("public", "")),
-                                remote_for_send,
-                                rk_secret.get("value"),
-                            )
-
-                        send_chain = dh_chain_cache[send_chain_cache_key]
-                        if isinstance(send_chain, bytes):
-                            step_count = header.n - start_send_n + 1
-                            if step_count >= 1:
-                                cache_key = (
-                                    f"{secret_id}:dh:send:{best_next_secret.get('id', '')}:{remote_for_send}",
-                                    step_count,
-                                )
-                                if cache_key not in chain_cache:
-                                    chain_cache[cache_key] = _derive_chain_message_key(send_chain, step_count)
-                                mk = chain_cache[cache_key]
-                                if isinstance(mk, bytes):
-                                    plaintext = _try_decrypt_with_message_key(entry, mk)
-                                    if plaintext:
-                                        old_dh_priv_value = _format_source_value(secret.get("value"))
-                                        new_dh_priv_value = _format_source_value(best_next_secret.get("value"))
-                                        rk_value = _format_source_value(rk_secret.get("value"))
-                                        peer_dh_value = _format_source_value(remote_for_send)
-                                        send_chain_value = _format_source_value(send_chain)
-                                        mark_decryptable(
-                                            entry,
-                                            plaintext,
-                                            (
-                                                "KDF(DH(old_dh_priv="
-                                                f"{old_dh_priv_value}, dh_pub={peer_dh_value}), rk={rk_value}) "
-                                                "-> rk' ; "
-                                                "KDF(DH(new_dh_priv="
-                                                f"{new_dh_priv_value}, dh_pub={peer_dh_value}), rk') "
-                                                f"-> ck({send_chain_value}) + step({step_count})"
-                                            ),
-                                        )
-                                        continue
-
-                recv_match = entry.get("receiver") == party
-
-                if not recv_match:
-                    continue
-
-                remote_dh_from_header = header.dh
-                recv_chain_key_id = f"{secret_id}:remote:{remote_dh_from_header}"
-                if recv_chain_key_id not in dh_chain_cache:
-                    dh_chain_cache[recv_chain_key_id] = _derive_receive_chain_from_dh_private_and_rk(
-                        str(secret.get("value", "")),
-                        compromised_public,
-                        remote_dh_from_header,
-                        rk_secret.get("value"),
-                    )
-                recv_chain = dh_chain_cache[recv_chain_key_id]
-                if recv_chain is None:
-                    continue
-
-                # For a ratchet receive chain identified by header.dh, n starts at 0.
-                step_count = header.n + 1
-                cache_key = (f"{secret_id}:dh:recv:{remote_dh_from_header}", step_count)
-                if cache_key not in chain_cache:
-                    chain_cache[cache_key] = _derive_chain_message_key(recv_chain, step_count)
-                mk = chain_cache[cache_key]
-                if mk is None:
-                    continue
-                plaintext = _try_decrypt_with_message_key(entry, mk)
-                if not plaintext:
-                    continue
-
-                dh_priv_value = _format_source_value(secret.get("value"))
-                rk_value = _format_source_value(rk_secret.get("value"))
-                peer_dh_value = _format_source_value(remote_dh_from_header)
-                recv_chain_value = _format_source_value(recv_chain)
-
-                mark_decryptable(
-                    entry,
-                    plaintext,
-                    f"KDF(DH(dh_priv={dh_priv_value}, dh_pub={peer_dh_value}), rk={rk_value}) -> ck({recv_chain_value}) + step({step_count})",
-                )
+    _process_dh_secrets_iterative()
 
     return sorted(results, key=lambda item: int(item.get("id", 0)), reverse=True)
 
