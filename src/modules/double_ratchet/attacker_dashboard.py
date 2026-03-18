@@ -755,6 +755,10 @@ def build_attacker_dashboard(
     options_by_id = {item["id"]: item for item in options}
 
     party_names = {session.initializer.name, session.responder.name}
+    opposite_party_by_name = {
+        session.initializer.name: session.responder.name,
+        session.responder.name: session.initializer.name,
+    }
 
     def _option_owner(label: str) -> str:
         first_token = label.split(" ", 1)[0] if label else "Other"
@@ -807,15 +811,21 @@ def build_attacker_dashboard(
     ) -> str | None:
         best_id: str | None = None
         best_start_n = -1
+
+        def _resolve_direction(item: dict[str, Any]) -> str:
+            item_direction = item.get("direction")
+            if item_direction in {"send", "recv"}:
+                return str(item_direction)
+            if item.get("kind") == "cks":
+                return "send"
+            if item.get("kind") == "ckr":
+                return "recv"
+            return ""
+
         for candidate in options:
             if candidate.get("party") != party:
                 continue
-            candidate_direction = candidate.get("direction")
-            if candidate_direction not in {"send", "recv"}:
-                if candidate.get("kind") == "cks":
-                    candidate_direction = "send"
-                elif candidate.get("kind") == "ckr":
-                    candidate_direction = "recv"
+            candidate_direction = _resolve_direction(candidate)
             if candidate_direction != direction:
                 continue
 
@@ -831,6 +841,48 @@ def build_attacker_dashboard(
                 best_start_n = candidate_start_n
                 best_id = str(candidate.get("id", ""))
         return best_id if best_id else None
+
+    def _imply_mirror_ck_id(ck_id: str) -> str | None:
+        secret = options_by_id.get(ck_id)
+        if secret is None:
+            return None
+
+        kind = str(secret.get("kind", ""))
+        if kind not in {"ck", "cks", "ckr"}:
+            return None
+
+        party = str(secret.get("party", ""))
+        if not party:
+            return None
+
+        mirror_party = opposite_party_by_name.get(party, "")
+        if not mirror_party:
+            return None
+
+        direction = secret.get("direction")
+        if direction not in {"send", "recv"}:
+            if kind == "cks":
+                direction = "send"
+            elif kind == "ckr":
+                direction = "recv"
+        if direction not in {"send", "recv"}:
+            return None
+
+        mirror_direction = "recv" if direction == "send" else "send"
+        public_key = str(secret.get("public", "")) if direction == "send" else str(secret.get("remote_public", ""))
+        if not public_key:
+            return None
+
+        start_n = secret.get("start_n")
+        if not isinstance(start_n, int):
+            return None
+
+        return _find_best_ck_id(
+            party=mirror_party,
+            direction=mirror_direction,
+            public_key=public_key,
+            step_n=start_n,
+        )
 
     def _find_message_mk_id(message_id: int) -> str | None:
         for candidate in options:
@@ -867,6 +919,9 @@ def build_attacker_dashboard(
                 direct_id = str(usage.get("id", ""))
                 if direct_id and direct_id in options_by_id:
                     implied_ids.add(direct_id)
+                    mirrored_id = _imply_mirror_ck_id(direct_id)
+                    if mirrored_id is not None:
+                        implied_ids.add(mirrored_id)
 
                 usage_kind = str(usage.get("kind", ""))
                 if usage_kind == "derived_ck":
@@ -883,6 +938,9 @@ def build_attacker_dashboard(
                         )
                         if matched_ck_id is not None:
                             implied_ids.add(matched_ck_id)
+                            mirrored_id = _imply_mirror_ck_id(matched_ck_id)
+                            if mirrored_id is not None:
+                                implied_ids.add(mirrored_id)
 
                 message_id = usage.get("message_id")
                 if isinstance(message_id, int):
