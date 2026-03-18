@@ -223,6 +223,7 @@ def decrypt_with_attacker_selection(
             "plaintext": "",
             "source": "",
             "header": entry["header"],
+            "usage": [],
         }
         for entry in messages
     ]
@@ -232,7 +233,12 @@ def decrypt_with_attacker_selection(
         for result in results
     }
 
-    def mark_decryptable(entry: dict[str, Any], plaintext: str, source: str) -> None:
+    def mark_decryptable(
+        entry: dict[str, Any],
+        plaintext: str,
+        source: str,
+        usage: dict[str, Any] | None = None,
+    ) -> None:
         if not plaintext:
             return
         result = result_lookup.get((entry["id"], entry["state"]))
@@ -241,6 +247,8 @@ def decrypt_with_attacker_selection(
         result["decryptable"] = True
         result["plaintext"] = plaintext
         result["source"] = source
+        if usage is not None:
+            result["usage"] = [dict(usage)]
 
     rk_by_party: dict[str, list[dict[str, Any]]] = {}
     for candidate_secret in compromised_secrets.values():
@@ -267,7 +275,16 @@ def decrypt_with_attacker_selection(
         for entry in messages:
             plaintext = _try_decrypt_with_message_key(entry, secret.get("value"))
             if plaintext:
-                mark_decryptable(entry, plaintext, str(secret.get("label", "MK")))
+                mark_decryptable(
+                    entry,
+                    plaintext,
+                    str(secret.get("label", "MK")),
+                    usage={
+                        "kind": "mk",
+                        "id": str(secret.get("id", "")),
+                        "message_id": int(entry.get("id", 0)),
+                    },
+                )
 
     def _process_ck_secret(secret: dict[str, Any], party: str) -> None:
         kind = secret.get("kind")
@@ -306,7 +323,20 @@ def decrypt_with_attacker_selection(
                 continue
             plaintext = _try_decrypt_with_message_key(entry, mk)
             if plaintext:
-                mark_decryptable(entry, plaintext, f"{secret.get('label', 'CK')} -> KDF_CK step {step_count}")
+                mark_decryptable(
+                    entry,
+                    plaintext,
+                    f"{secret.get('label', 'CK')} -> KDF_CK step {step_count}",
+                    usage={
+                        "kind": "ck",
+                        "id": str(secret.get("id", "")),
+                        "party": party,
+                        "direction": direction,
+                        "public_key": public_key,
+                        "step_n": int(header.n),
+                        "message_id": int(entry.get("id", 0)),
+                    },
+                )
                 continue
 
     def _build_dh_sequence(party: str) -> list[dict[str, Any]]:
@@ -615,7 +645,19 @@ def decrypt_with_attacker_selection(
             f"iterative DH compromise: RK({rk_value}) -> {chain_label} on dh_pub={peer_value} "
             f"(chain={chain_value}) + step({step_count})"
         )
-        mark_decryptable(entry, plaintext, source)
+        mark_decryptable(
+            entry,
+            plaintext,
+            source,
+            usage={
+                "kind": "derived_ck",
+                "party": str(ctx.get("party", "")),
+                "direction": direction,
+                "public_key": str(header.dh),
+                "step_n": int(header.n),
+                "message_id": int(entry.get("id", 0)),
+            },
+        )
         return True
 
     def _process_dh_secrets_iterative() -> None:
@@ -713,11 +755,6 @@ def build_attacker_dashboard(
     options_by_id = {item["id"]: item for item in options}
 
     party_names = {session.initializer.name, session.responder.name}
-    opposite_party_by_name = {
-        session.initializer.name: session.responder.name,
-        session.responder.name: session.initializer.name,
-    }
-    messages_by_id = {msg.seq_id: msg for msg in session.message_log}
 
     def _option_owner(label: str) -> str:
         first_token = label.split(" ", 1)[0] if label else "Other"
@@ -761,46 +798,10 @@ def build_attacker_dashboard(
         }.get(str(item.get("kind", "")), 99)
         return (kind_rank, _extract_key_number(item))
 
-    def _is_send_ck(item: dict[str, Any]) -> bool:
-        kind = item.get("kind")
-        return kind == "cks" or (kind == "ck" and item.get("direction") == "send")
-
-    def _is_recv_ck(item: dict[str, Any]) -> bool:
-        kind = item.get("kind")
-        return kind == "ckr" or (kind == "ck" and item.get("direction") == "recv")
-
-    def _find_matching_ids(
+    def _find_best_ck_id(
         *,
         party: str,
-        kind_filter: Callable[[dict[str, Any]], bool],
-        public_key: str,
-        start_n: int,
-        allow_earlier_start: bool = False,
-    ) -> set[str]:
-        matches: set[str] = set()
-        for candidate in options:
-            if candidate.get("party") != party:
-                continue
-            if not kind_filter(candidate):
-                continue
-            candidate_public = candidate.get("public") if _is_send_ck(candidate) else candidate.get("remote_public")
-            if candidate_public != public_key:
-                continue
-            candidate_start_n = candidate.get("start_n")
-            if not isinstance(candidate_start_n, int):
-                continue
-            if allow_earlier_start:
-                if candidate_start_n > start_n:
-                    continue
-            elif candidate_start_n != start_n:
-                continue
-            matches.add(str(candidate.get("id", "")))
-        return {cid for cid in matches if cid}
-
-    def _find_best_matching_id(
-        *,
-        party: str,
-        kind_filter: Callable[[dict[str, Any]], bool],
+        direction: str,
         public_key: str,
         step_n: int,
     ) -> str | None:
@@ -809,22 +810,40 @@ def build_attacker_dashboard(
         for candidate in options:
             if candidate.get("party") != party:
                 continue
-            if not kind_filter(candidate):
+            candidate_direction = candidate.get("direction")
+            if candidate_direction not in {"send", "recv"}:
+                if candidate.get("kind") == "cks":
+                    candidate_direction = "send"
+                elif candidate.get("kind") == "ckr":
+                    candidate_direction = "recv"
+            if candidate_direction != direction:
                 continue
-            candidate_public = candidate.get("public") if _is_send_ck(candidate) else candidate.get("remote_public")
+
+            candidate_public = candidate.get("public") if direction == "send" else candidate.get("remote_public")
             if candidate_public != public_key:
                 continue
+
             candidate_start_n = candidate.get("start_n")
-            if not isinstance(candidate_start_n, int):
+            if not isinstance(candidate_start_n, int) or candidate_start_n > step_n:
                 continue
-            if candidate_start_n > step_n:
-                continue
+
             if candidate_start_n >= best_start_n:
                 best_start_n = candidate_start_n
                 best_id = str(candidate.get("id", ""))
         return best_id if best_id else None
 
-    def _infer_ck_ids_from_decryptable_messages(known_ids: set[str]) -> set[str]:
+    def _find_message_mk_id(message_id: int) -> str | None:
+        for candidate in options:
+            if candidate.get("kind") != "mk":
+                continue
+            if candidate.get("seq_id") != message_id:
+                continue
+            candidate_id = str(candidate.get("id", ""))
+            if candidate_id:
+                return candidate_id
+        return None
+
+    def _implied_ids_from_usage(known_ids: set[str]) -> set[str]:
         compromised_subset = {
             key_id: dict(options_by_id[key_id])
             for key_id in known_ids
@@ -832,30 +851,46 @@ def build_attacker_dashboard(
         }
         analysis = decrypt_with_attacker_selection(session, pending_messages, compromised_subset)
 
-        implied_ck_ids: set[str] = set()
+        implied_ids: set[str] = set()
         for result in analysis:
             if not result.get("decryptable"):
                 continue
 
-            header = result.get("header")
-            if not isinstance(header, Header):
+            usage_items = result.get("usage")
+            if not isinstance(usage_items, list):
                 continue
 
-            receiver = result.get("receiver")
-            if not isinstance(receiver, str):
-                continue
+            for usage in usage_items:
+                if not isinstance(usage, dict):
+                    continue
 
-            # Decryption proves receiver-side chain knowledge for this message context.
-            best_receiver_ck = _find_best_matching_id(
-                party=receiver,
-                kind_filter=_is_recv_ck,
-                public_key=header.dh,
-                step_n=header.n,
-            )
-            if best_receiver_ck is not None:
-                implied_ck_ids.add(best_receiver_ck)
+                direct_id = str(usage.get("id", ""))
+                if direct_id and direct_id in options_by_id:
+                    implied_ids.add(direct_id)
 
-        return implied_ck_ids
+                usage_kind = str(usage.get("kind", ""))
+                if usage_kind == "derived_ck":
+                    party = str(usage.get("party", ""))
+                    direction = str(usage.get("direction", ""))
+                    public_key = str(usage.get("public_key", ""))
+                    step_n = usage.get("step_n")
+                    if party and direction in {"send", "recv"} and public_key and isinstance(step_n, int):
+                        matched_ck_id = _find_best_ck_id(
+                            party=party,
+                            direction=direction,
+                            public_key=public_key,
+                            step_n=step_n,
+                        )
+                        if matched_ck_id is not None:
+                            implied_ids.add(matched_ck_id)
+
+                message_id = usage.get("message_id")
+                if isinstance(message_id, int):
+                    message_mk_id = _find_message_mk_id(message_id)
+                    if message_mk_id is not None:
+                        implied_ids.add(message_mk_id)
+
+        return implied_ids
 
     def _compute_implied_known_ids(selected_ids: set[str]) -> set[str]:
         known_ids = {key_id for key_id in selected_ids if key_id in options_by_id}
@@ -863,110 +898,11 @@ def build_attacker_dashboard(
         changed = True
         while changed:
             changed = False
-            snapshot_ids = list(known_ids)
-            rk_parties = {
-                str(options_by_id[key_id].get("party", ""))
-                for key_id in snapshot_ids
-                if options_by_id[key_id].get("kind") == "rk"
-            }
-
-            for key_id in snapshot_ids:
-                secret = options_by_id.get(key_id)
-                if secret is None:
-                    continue
-                party = str(secret.get("party", ""))
-                if not party:
-                    continue
-
-                if _is_send_ck(secret):
-                    counterparty = opposite_party_by_name.get(party, "")
-                    public_key = str(secret.get("public", ""))
-                    start_n = secret.get("start_n")
-                    if counterparty and public_key and isinstance(start_n, int):
-                        matches = _find_matching_ids(
-                            party=counterparty,
-                            kind_filter=_is_recv_ck,
-                            public_key=public_key,
-                            start_n=start_n,
-                        )
-                        new_ids = matches - known_ids
-                        if new_ids:
-                            known_ids.update(new_ids)
-                            changed = True
-
-                if secret.get("kind") == "dh_private" and party in rk_parties:
-                    remote_public = str(secret.get("remote_public", ""))
-                    start_recv_n = secret.get("start_recv_n")
-                    if remote_public and isinstance(start_recv_n, int):
-                        matches = _find_matching_ids(
-                            party=party,
-                            kind_filter=_is_recv_ck,
-                            public_key=remote_public,
-                            start_n=start_recv_n,
-                        )
-                        new_ids = matches - known_ids
-                        if new_ids:
-                            known_ids.update(new_ids)
-                            changed = True
-
-            implied_from_decryption = _infer_ck_ids_from_decryptable_messages(known_ids)
-            new_ids = implied_from_decryption - known_ids
+            implied_from_usage = _implied_ids_from_usage(known_ids)
+            new_ids = implied_from_usage - known_ids
             if new_ids:
                 known_ids.update(new_ids)
                 changed = True
-
-            # Any known CK implies all message keys reachable on that chain.
-            for candidate in options:
-                if candidate.get("kind") != "mk":
-                    continue
-                candidate_id = str(candidate.get("id", ""))
-                if not candidate_id or candidate_id in known_ids:
-                    continue
-
-                seq_id = candidate.get("seq_id")
-                if not isinstance(seq_id, int):
-                    continue
-                message = messages_by_id.get(seq_id)
-                if message is None or message.header is None:
-                    continue
-
-                for known_id in snapshot_ids:
-                    secret = options_by_id.get(known_id)
-                    if secret is None:
-                        continue
-                    if secret.get("kind") not in {"ck", "cks", "ckr"}:
-                        continue
-
-                    direction = secret.get("direction")
-                    if direction not in {"send", "recv"}:
-                        if secret.get("kind") == "cks":
-                            direction = "send"
-                        elif secret.get("kind") == "ckr":
-                            direction = "recv"
-                    if direction not in {"send", "recv"}:
-                        continue
-
-                    party = str(secret.get("party", ""))
-                    start_n = secret.get("start_n")
-                    if not party or not isinstance(start_n, int):
-                        continue
-
-                    chain_public = str(secret.get("public", "")) if direction == "send" else str(secret.get("remote_public", ""))
-                    if not chain_public:
-                        continue
-
-                    if direction == "send" and message.sender != party:
-                        continue
-                    if direction == "recv" and message.receiver != party:
-                        continue
-                    if message.header.dh != chain_public:
-                        continue
-                    if message.header.n < start_n:
-                        continue
-
-                    known_ids.add(candidate_id)
-                    changed = True
-                    break
 
         return known_ids - selected_ids
 
