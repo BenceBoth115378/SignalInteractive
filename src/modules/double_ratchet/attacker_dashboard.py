@@ -151,7 +151,7 @@ def collect_attacker_secret_options(session: DoubleRatchetState) -> list[dict[st
     for message in session.message_log:
         add_option(
             f"msg:{message.seq_id}:mk",
-            f"MK for message #{message.seq_id}",
+            f"MK#{message.seq_id}",
             "mk",
             message.message_key,
         )
@@ -955,6 +955,23 @@ def build_attacker_dashboard(
         refresh_callback()
         page.update()
 
+    def _owner_items(owner: str) -> list[dict[str, Any]]:
+        return [
+            item
+            for item in options
+            if _option_owner(str(item.get("label", ""))) == owner
+        ]
+
+    def select_owner(owner: str) -> None:
+        updated = dict(compromised_secrets)
+        for item in _owner_items(owner):
+            item_id = str(item.get("id", ""))
+            if item_id:
+                updated[item_id] = dict(item)
+        set_compromised_secrets(updated)
+        refresh_callback()
+        page.update()
+
     key_selector_controls: list[ft.Control] = [
         ft.Row(
             controls=[
@@ -985,7 +1002,15 @@ def build_attacker_dashboard(
                 continue
 
             key_selector_controls.append(ft.Divider(height=8))
-            key_selector_controls.append(ft.Text(owner, weight="bold", size=12))
+            key_selector_controls.append(
+                ft.Row(
+                    controls=[
+                        ft.Text(owner, weight="bold", size=12),
+                        ft.TextButton("Select all", on_click=lambda e, section=owner: select_owner(section)),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                )
+            )
 
             if owner in {session.initializer.name, session.responder.name}:
                 dh_and_rk = sorted(
