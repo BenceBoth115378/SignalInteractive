@@ -207,12 +207,12 @@ def _derive_chain_message_key(chain_key: bytes, step_count: int) -> bytes | None
     return mk
 
 
-def _derive_chains_from_dh_private_and_rk(
+def _derive_receive_chain_from_dh_private_and_rk(
     dh_private: str,
     own_public: str,
     remote_public: str,
     root_key: bytes,
-) -> tuple[bytes, bytes] | None:
+) -> bytes | None:
     if not isinstance(dh_private, str) or not dh_private:
         return None
     if not isinstance(remote_public, str) or not remote_public:
@@ -223,12 +223,43 @@ def _derive_chains_from_dh_private_and_rk(
     try:
         dh_pair = DHKeyPair(private=dh_private, public=own_public)
         dh_out = ext.DH(dh_pair, remote_public)
-        rk_after_recv, recv_chain = ext.KDF_RK(root_key, dh_out)
-        _, send_chain = ext.KDF_RK(rk_after_recv, dh_out)
+        _, recv_chain = ext.KDF_RK(root_key, dh_out)
     except ValueError:
         return None
 
-    return recv_chain, send_chain
+    return recv_chain
+
+
+def _derive_send_chain_from_two_dh_privates_and_rk(
+    old_dh_private: str,
+    old_public: str,
+    next_dh_private: str,
+    next_public: str,
+    remote_public: str,
+    root_key: bytes,
+) -> bytes | None:
+    if not isinstance(old_dh_private, str) or not old_dh_private:
+        return None
+    if not isinstance(next_dh_private, str) or not next_dh_private:
+        return None
+    if not isinstance(remote_public, str) or not remote_public:
+        return None
+    if not isinstance(root_key, bytes) or not root_key:
+        return None
+
+    try:
+        old_pair = DHKeyPair(private=old_dh_private, public=old_public)
+        next_pair = DHKeyPair(private=next_dh_private, public=next_public)
+
+        dh_out_recv = ext.DH(old_pair, remote_public)
+        rk_after_recv, _ = ext.KDF_RK(root_key, dh_out_recv)
+
+        dh_out_send = ext.DH(next_pair, remote_public)
+        _, send_chain = ext.KDF_RK(rk_after_recv, dh_out_send)
+    except ValueError:
+        return None
+
+    return send_chain
 
 
 def decrypt_with_attacker_selection(
@@ -271,9 +302,17 @@ def decrypt_with_attacker_selection(
         for secret in compromised_secrets.values()
         if secret.get("kind") == "rk" and isinstance(secret.get("party"), str)
     }
+    dh_by_party = {
+        party_name: [
+            secret
+            for secret in compromised_secrets.values()
+            if secret.get("kind") == "dh_private" and secret.get("party") == party_name
+        ]
+        for party_name in rk_by_party.keys()
+    }
 
     chain_cache: dict[tuple[str, int], bytes | None] = {}
-    dh_chain_cache: dict[str, tuple[bytes, bytes] | None] = {}
+    dh_chain_cache: dict[str, bytes | None] = {}
     for secret in compromised_secrets.values():
         kind = secret.get("kind")
         party = secret.get("party")
@@ -340,27 +379,10 @@ def decrypt_with_attacker_selection(
                 continue
 
             compromised_public = secret.get("public")
-            remote_public = secret.get("remote_public")
-            start_send_n = secret.get("start_send_n")
-            start_recv_n = secret.get("start_recv_n")
             if not isinstance(compromised_public, str) or not compromised_public:
-                continue
-            if not isinstance(remote_public, str) or not remote_public:
-                continue
-            if not isinstance(start_send_n, int) or not isinstance(start_recv_n, int):
                 continue
 
             secret_id = str(secret.get("id", ""))
-            send_chain_key_id = f"{secret_id}:remote:{remote_public}"
-            if send_chain_key_id not in dh_chain_cache:
-                dh_chain_cache[send_chain_key_id] = _derive_chains_from_dh_private_and_rk(
-                    str(secret.get("value", "")),
-                    compromised_public,
-                    remote_public,
-                    rk_secret.get("value"),
-                )
-            send_context_chains = dh_chain_cache[send_chain_key_id]
-
             for entry in messages:
                 header = entry.get("header")
                 if not isinstance(header, Header):
@@ -368,37 +390,75 @@ def decrypt_with_attacker_selection(
 
                 send_match = all([
                     entry.get("sender") == party,
-                    header.dh == compromised_public,
-                    header.n >= start_send_n,
+                    header.dh == secret.get("public"),
                 ])
-                recv_match = entry.get("receiver") == party
-
                 if send_match:
-                    if send_context_chains is None:
-                        continue
-                    _, send_chain = send_context_chains
-                    step_count = header.n - start_send_n + 1
-                    if step_count < 1:
-                        continue
-                    cache_key = (f"{secret_id}:dh:send:{remote_public}", step_count)
-                    if cache_key not in chain_cache:
-                        chain_cache[cache_key] = _derive_chain_message_key(send_chain, step_count)
-                    mk = chain_cache[cache_key]
-                    if mk is None:
-                        continue
-                    plaintext = _try_decrypt_with_message_key(entry, mk)
-                    if not plaintext:
-                        continue
-                    dh_priv_value = _format_source_value(secret.get("value"))
-                    rk_value = _format_source_value(rk_secret.get("value"))
-                    peer_dh_value = _format_source_value(remote_public)
-                    send_chain_value = _format_source_value(send_chain)
-                    mark_decryptable(
-                        entry,
-                        plaintext,
-                        f"KDF(DH(dh_priv={dh_priv_value}, dh_pub={peer_dh_value}), rk={rk_value}) -> ck({send_chain_value}) + step({step_count})",
-                    )
                     continue
+
+                send_candidates = [
+                    next_secret
+                    for next_secret in dh_by_party.get(party, [])
+                    if str(next_secret.get("id", "")) != secret_id
+                    if next_secret.get("public") == header.dh
+                    if isinstance(next_secret.get("start_send_n"), int)
+                    if header.n >= int(next_secret.get("start_send_n"))
+                ]
+
+                if entry.get("sender") == party and send_candidates:
+                    best_next_secret = max(
+                        send_candidates,
+                        key=lambda s: int(s.get("start_send_n", -1)),
+                    )
+                    remote_for_send = best_next_secret.get("remote_public")
+                    start_send_n = int(best_next_secret.get("start_send_n", 0))
+                    if isinstance(remote_for_send, str) and remote_for_send:
+                        send_chain_cache_key = (
+                            f"{secret_id}:next:{best_next_secret.get('id', '')}:remote:{remote_for_send}"
+                        )
+                        if send_chain_cache_key not in dh_chain_cache:
+                            dh_chain_cache[send_chain_cache_key] = _derive_send_chain_from_two_dh_privates_and_rk(
+                                str(secret.get("value", "")),
+                                str(secret.get("public", "")),
+                                str(best_next_secret.get("value", "")),
+                                str(best_next_secret.get("public", "")),
+                                remote_for_send,
+                                rk_secret.get("value"),
+                            )
+
+                        send_chain = dh_chain_cache[send_chain_cache_key]
+                        if isinstance(send_chain, bytes):
+                            step_count = header.n - start_send_n + 1
+                            if step_count >= 1:
+                                cache_key = (
+                                    f"{secret_id}:dh:send:{best_next_secret.get('id', '')}:{remote_for_send}",
+                                    step_count,
+                                )
+                                if cache_key not in chain_cache:
+                                    chain_cache[cache_key] = _derive_chain_message_key(send_chain, step_count)
+                                mk = chain_cache[cache_key]
+                                if isinstance(mk, bytes):
+                                    plaintext = _try_decrypt_with_message_key(entry, mk)
+                                    if plaintext:
+                                        old_dh_priv_value = _format_source_value(secret.get("value"))
+                                        new_dh_priv_value = _format_source_value(best_next_secret.get("value"))
+                                        rk_value = _format_source_value(rk_secret.get("value"))
+                                        peer_dh_value = _format_source_value(remote_for_send)
+                                        send_chain_value = _format_source_value(send_chain)
+                                        mark_decryptable(
+                                            entry,
+                                            plaintext,
+                                            (
+                                                "KDF(DH(old_dh_priv="
+                                                f"{old_dh_priv_value}, dh_pub={peer_dh_value}), rk={rk_value}) "
+                                                "-> rk' ; "
+                                                "KDF(DH(new_dh_priv="
+                                                f"{new_dh_priv_value}, dh_pub={peer_dh_value}), rk') "
+                                                f"-> ck({send_chain_value}) + step({step_count})"
+                                            ),
+                                        )
+                                        continue
+
+                recv_match = entry.get("receiver") == party
 
                 if not recv_match:
                     continue
@@ -406,16 +466,15 @@ def decrypt_with_attacker_selection(
                 remote_dh_from_header = header.dh
                 recv_chain_key_id = f"{secret_id}:remote:{remote_dh_from_header}"
                 if recv_chain_key_id not in dh_chain_cache:
-                    dh_chain_cache[recv_chain_key_id] = _derive_chains_from_dh_private_and_rk(
+                    dh_chain_cache[recv_chain_key_id] = _derive_receive_chain_from_dh_private_and_rk(
                         str(secret.get("value", "")),
                         compromised_public,
                         remote_dh_from_header,
                         rk_secret.get("value"),
                     )
-                recv_context_chains = dh_chain_cache[recv_chain_key_id]
-                if recv_context_chains is None:
+                recv_chain = dh_chain_cache[recv_chain_key_id]
+                if recv_chain is None:
                     continue
-                recv_chain, _ = recv_context_chains
 
                 # For a ratchet receive chain identified by header.dh, n starts at 0.
                 step_count = header.n + 1
