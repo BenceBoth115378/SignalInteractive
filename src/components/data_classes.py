@@ -165,6 +165,7 @@ class MessageState:
 @dataclass
 class PartyStateSnapshot:
     DHs_public: str = ""
+    DHs_private: str = ""
     DHr: str | None = ""
     RK: bytes | None = None
     CKs: bytes | None = None

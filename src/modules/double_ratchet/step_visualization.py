@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable
 
 import flet as ft
 from components.data_classes import ReceiveStepVisualizationSnapshot, SendStepVisualizationSnapshot
@@ -179,7 +179,12 @@ def _party_state_panel(
     return _with_tooltip(panel, tooltip)
 
 
-def _show_step_dialog(page: ft.Page, dialog_title: str, steps: list[dict[str, Any]]) -> None:
+def _show_step_dialog(
+    page: ft.Page,
+    dialog_title: str,
+    steps: list[dict[str, Any]],
+    on_close: Callable[[], None] | None = None,
+) -> None:
     resize_event_name = "on_resized" if hasattr(page, "on_resized") else "on_resize"
     previous_resize_handler = getattr(page, resize_event_name, None)
 
@@ -208,6 +213,8 @@ def _show_step_dialog(page: ft.Page, dialog_title: str, steps: list[dict[str, An
         if getattr(page, resize_event_name, None) == on_page_resized:
             setattr(page, resize_event_name, previous_resize_handler)
         page.update()
+        if on_close is not None:
+            on_close()
 
     def render_current_step() -> None:
         index = current_step["index"]
@@ -268,7 +275,11 @@ def _show_step_dialog(page: ft.Page, dialog_title: str, steps: list[dict[str, An
     page.update()
 
 
-def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVisualizationSnapshot) -> None:
+def show_sending_step_visualization_dialog(
+    page: ft.Page,
+    step_data: SendStepVisualizationSnapshot,
+    on_close: Callable[[], None] | None = None,
+) -> None:
     tooltips = get_tooltip_messages("double_ratchet")
 
     flow_node = _flow_node
@@ -290,7 +301,10 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVis
     mk_full = step_data.mk
     before_cks_full = step_data.before.CKs
     after_cks_full = step_data.after.CKs
-    before_dh_full = step_data.before.DHs_public
+    before_dhs_pub_full = step_data.before.DHs_public
+    before_dhs_priv_full = step_data.before.DHs_private
+    after_dhs_pub_full = step_data.after.DHs_public
+    after_dhs_priv_full = step_data.after.DHs_private
     header_dh_full = step_data.header.dh
 
     cipher = _last_n_chars(cipher_full, 8)
@@ -300,7 +314,10 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVis
     after_ns = step_data.after.Ns
     before_ns = step_data.before.Ns
     before_pn = step_data.before.PN
-    before_dh = _last_n_chars(before_dh_full, 8)
+    before_dhs_pub = _last_n_chars(before_dhs_pub_full, 8)
+    before_dhs_priv = _last_n_chars(before_dhs_priv_full, 8)
+    after_dhs_pub = _last_n_chars(after_dhs_pub_full, 8)
+    after_dhs_priv = _last_n_chars(after_dhs_priv_full, 8)
     header_preview = (
         f"dh={_last_n_chars(header_dh_full, 8)}, "
         f"pn={step_data.header.pn}, n={step_data.header.n + 1}"
@@ -328,7 +345,8 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVis
             party_state_panel(
                 "Sender state (before send)",
                 [
-                    ("DHs", before_dh, tooltips.get("step_viz_sender_before_dhs", ""), before_dh_full),
+                    ("DHs_pub", before_dhs_pub, tooltips.get("DHs_pub", ""), before_dhs_pub_full),
+                    ("DHs_priv", before_dhs_priv, tooltips.get("DHs_priv", ""), before_dhs_priv_full),
                     ("PN", str(before_pn), tooltips.get("step_viz_sender_before_pn", ""), None),
                     ("Ns", str(before_ns), tooltips.get("step_viz_sender_before_ns", ""), None),
                     ("CKs", before_cks, tooltips.get("step_viz_sender_before_cks", ""), before_cks_full),
@@ -398,7 +416,7 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVis
             ft.Text("4) Create header and update state", weight="bold"),
             ft.Row(
                 controls=[
-                    flow_node("DHs", before_dh, tooltip=tooltips.get("step_viz_header_dhs", ""), full_value=before_dh_full),
+                    flow_node("DHs_pub", before_dhs_pub, tooltip=tooltips.get("step_viz_header_dhs", ""), full_value=before_dhs_pub_full),
                     flow_node("PN", str(before_pn), tooltip=tooltips.get("step_viz_header_pn", "")),
                     flow_node("N", str(before_ns + 1), tooltip=tooltips.get("step_viz_header_n", "")),
                 ],
@@ -415,13 +433,15 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVis
     )
 
     step5_before_rows = [
-        ("DHs", before_dh, tooltips.get("step_viz_sent_before_dhs", ""), before_dh_full),
+        ("DHs_pub", before_dhs_pub, tooltips.get("DHs_pub", ""), before_dhs_pub_full),
+        ("DHs_priv", before_dhs_priv, tooltips.get("DHs_priv", ""), before_dhs_priv_full),
         ("PN", str(before_pn), tooltips.get("step_viz_sent_before_pn", ""), None),
         ("Ns", str(before_ns), tooltips.get("step_viz_sent_before_ns", ""), None),
         ("CKs", before_cks, tooltips.get("step_viz_sent_before_cks", ""), before_cks_full),
     ]
     step5_after_rows = [
-        ("DHs", before_dh, tooltips.get("step_viz_sent_after_dhs", ""), before_dh_full),
+        ("DHs_pub", after_dhs_pub, tooltips.get("DHs_pub", ""), after_dhs_pub_full),
+        ("DHs_priv", after_dhs_priv, tooltips.get("DHs_priv", ""), after_dhs_priv_full),
         ("PN", str(before_pn), tooltips.get("step_viz_sent_after_pn", ""), None),
         ("Ns", str(after_ns), tooltips.get("step_viz_sent_after_ns", ""), None),
         ("CKs", after_cks, tooltips.get("step_viz_sent_after_cks", ""), after_cks_full),
@@ -495,7 +515,7 @@ def show_sending_step_visualization_dialog(page: ft.Page, step_data: SendStepVis
         },
     ]
 
-    _show_step_dialog(page, "Step-by-step vizualization", steps)
+    _show_step_dialog(page, "Step-by-step visualization of sending steps", steps, on_close=on_close)
 
 
 def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveStepVisualizationSnapshot) -> None:
@@ -533,8 +553,10 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
     after_rk_full = step_data.after.RK
     before_dhr_full = step_data.before.DHr or ""
     after_dhr_full = step_data.after.DHr or ""
-    before_dhs_full = step_data.before.DHs_public
-    after_dhs_full = step_data.after.DHs_public
+    before_dhs_pub_full = step_data.before.DHs_public
+    after_dhs_pub_full = step_data.after.DHs_public
+    before_dhs_priv_full = step_data.before.DHs_private
+    after_dhs_priv_full = step_data.after.DHs_private
     before_cks_full = step_data.before.CKs
     after_cks_full = step_data.after.CKs
     ckr_after_double_ratchet_full = step_data.ckr_after_double_ratchet
@@ -563,8 +585,10 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
     after_rk = _last_n_chars(after_rk_full, 8)
     before_dhr = _last_n_chars(before_dhr_full, 8)
     after_dhr = _last_n_chars(after_dhr_full, 8)
-    before_dhs = _last_n_chars(before_dhs_full, 8)
-    after_dhs = _last_n_chars(after_dhs_full, 8)
+    before_dhs_pub = _last_n_chars(before_dhs_pub_full, 8)
+    after_dhs_pub = _last_n_chars(after_dhs_pub_full, 8)
+    before_dhs_priv = _last_n_chars(before_dhs_priv_full, 8)
+    after_dhs_priv = _last_n_chars(after_dhs_priv_full, 8)
     before_cks = _last_n_chars(before_cks_full, 8)
     after_cks = _last_n_chars(after_cks_full, 8)
     ckr_after_double_ratchet = _last_n_chars(ckr_after_double_ratchet_full, 8)
@@ -596,6 +620,8 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
             party_state_panel(
                 "Receiver state before receive",
                 [
+                    ("DHs_pub", before_dhs_pub, tooltips.get("DHs_pub", ""), before_dhs_pub_full),
+                    ("DHs_priv", before_dhs_priv, tooltips.get("DHs_priv", ""), before_dhs_priv_full),
                     ("DHr", before_dhr, tooltips.get("step_viz_receive_before_dhr", ""), before_dhr_full),
                     ("RK", before_rk, tooltips.get("step_viz_receive_before_rk", ""), before_rk_full),
                     ("CKr", before_ckr, tooltips.get("step_viz_receive_before_ckr", ""), before_ckr_full),
@@ -724,7 +750,8 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
 
     dh_ratchet_before_rows = [
         ("DHr", before_dhr, tooltips.get("step_viz_receive_before_dhr", ""), before_dhr_full),
-        ("DHs", before_dhs, tooltips.get("step_viz_receive_dh_ratchet_before_dhs", ""), before_dhs_full),
+        ("DHs_pub", before_dhs_pub, tooltips.get("DHs_pub", ""), before_dhs_pub_full),
+        ("DHs_priv", before_dhs_priv, tooltips.get("DHs_priv", ""), before_dhs_priv_full),
         ("RK", before_rk, tooltips.get("step_viz_receive_before_rk", ""), before_rk_full),
         ("CKr", before_ckr, tooltips.get("step_viz_receive_before_ckr", ""), before_ckr_full),
         ("CKs", before_cks, tooltips.get("step_viz_receive_dh_ratchet_before_cks", ""), before_cks_full),
@@ -733,7 +760,8 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
     ]
     dh_ratchet_after_rows = [
         ("DHr", after_dhr, tooltips.get("step_viz_receive_after_dhr", ""), after_dhr_full),
-        ("DHs", after_dhs, tooltips.get("step_viz_receive_dh_ratchet_after_dhs", ""), after_dhs_full),
+        ("DHs_pub", after_dhs_pub, tooltips.get("DHs_pub", ""), after_dhs_pub_full),
+        ("DHs_priv", after_dhs_priv, tooltips.get("DHs_priv", ""), after_dhs_priv_full),
         ("RK", after_rk, tooltips.get("step_viz_receive_after_rk", ""), after_rk_full),
         ("CKr", after_ckr, tooltips.get("step_viz_receive_after_ckr", ""), after_ckr_full),
         ("CKs", after_cks, tooltips.get("step_viz_receive_dh_ratchet_after_cks", ""), after_cks_full),
@@ -822,11 +850,16 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
             ft.Text("↓", size=24),
             flow_node(
                 "Generate new DH key pair",
-                f"DHs: {before_dhs} -> {after_dhs}",
+                f"DHs_pub: {before_dhs_pub} -> {after_dhs_pub}\nDHs_priv: {before_dhs_priv} -> {after_dhs_priv}",
                 width=320,
                 height=100,
                 tooltip=tooltips.get("step_viz_receive_dh_ratchet_after_dhs", ""),
-                full_value=f"old DHs: {_to_text(before_dhs_full)}\nnew DHs: {_to_text(after_dhs_full)}",
+                full_value=(
+                    f"old DHs_pub: {_to_text(before_dhs_pub_full)}\n"
+                    f"new DHs_pub: {_to_text(after_dhs_pub_full)}\n"
+                    f"old DHs_priv: {_to_text(before_dhs_priv_full)}\n"
+                    f"new DHs_priv: {_to_text(after_dhs_priv_full)}"
+                ),
             ),
             ft.Text("↓", size=24),
             flow_node(
@@ -892,12 +925,16 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
     )
 
     before_rows = [
+        ("DHs_pub", before_dhs_pub, tooltips.get("DHs_pub", ""), before_dhs_pub_full),
+        ("DHs_priv", before_dhs_priv, tooltips.get("DHs_priv", ""), before_dhs_priv_full),
         ("DHr", before_dhr, tooltips.get("step_viz_receive_before_dhr", ""), before_dhr_full),
         ("RK", before_rk, tooltips.get("step_viz_receive_before_rk", ""), before_rk_full),
         ("CKr", before_ckr, tooltips.get("step_viz_receive_before_ckr", ""), before_ckr_full),
         ("Nr", str(before_nr), tooltips.get("step_viz_receive_before_nr", ""), None),
     ]
     after_rows = [
+        ("DHs_pub", after_dhs_pub, tooltips.get("DHs_pub", ""), after_dhs_pub_full),
+        ("DHs_priv", after_dhs_priv, tooltips.get("DHs_priv", ""), after_dhs_priv_full),
         ("DHr", after_dhr, tooltips.get("step_viz_receive_after_dhr", ""), after_dhr_full),
         ("RK", after_rk, tooltips.get("step_viz_receive_after_rk", ""), after_rk_full),
         ("CKr", after_ckr, tooltips.get("step_viz_receive_after_ckr", ""), after_ckr_full),
@@ -1012,4 +1049,4 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
         if isinstance(step["control"], ft.Column) and len(step["control"].controls) > 0:
             step["control"].controls[0].value = numbered_title
 
-    _show_step_dialog(page, "Receiving ratchet step visualization", steps)
+    _show_step_dialog(page, "Step-by-step visualization of receiving steps", steps)

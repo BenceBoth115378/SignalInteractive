@@ -1,8 +1,12 @@
 import flet as ft
 from components.data_classes import DoubleRatchetState
 from components.data_classes import PartyState
+from modules.double_ratchet.key_history import get_key_tooltip_text
 from modules.base_view import format_key, last_n_chars, make_copy_handler
 from modules.tooltip_helpers import build_tooltip_text, get_tooltip_messages
+
+
+SIDE_PANEL_WIDTH = 360
 
 
 def _build_party_panel(
@@ -17,8 +21,8 @@ def _build_party_panel(
     header = party.name if role_title is None else f"{role_title}: {party.name}"
     tooltips = get_tooltip_messages("double_ratchet")
 
-    dhs_full = format_key(party.DHs)
     dhs_public_full = party.DHs.public if party.DHs is not None else "None"
+    dhs_private_full = party.DHs.private if party.DHs is not None else "None"
     dhr_full = format_key(party.DHr)
     rk_full = format_key(party.RK)
     cks_full = format_key(party.CKs)
@@ -37,7 +41,8 @@ def _build_party_panel(
 
     panel_controls = [
         ft.Text(header, size=18, weight="bold", text_align=ft.TextAlign.LEFT),
-        _key_field("DHs", dhs_full, dhs_public_full),
+        _key_field("DHs_pub", dhs_public_full),
+        _key_field("DHs_priv", dhs_private_full),
         _key_field("DHr", dhr_full),
         _key_field("RK", rk_full),
         _key_field("CKs", cks_full),
@@ -51,11 +56,94 @@ def _build_party_panel(
     if message_input is not None and on_send is not None:
         panel_controls.extend([ft.Divider(height=12), message_input, ft.Button("Send", on_click=on_send)])
 
-    return ft.Column(
-        panel_controls,
-        spacing=2,
-        tight=True,
-        horizontal_alignment=ft.CrossAxisAlignment.START,
+    return ft.Container(
+        content=ft.Column(
+            panel_controls,
+            spacing=2,
+            tight=True,
+            horizontal_alignment=ft.CrossAxisAlignment.START,
+        ),
+        width=SIDE_PANEL_WIDTH,
+    )
+
+
+def _build_used_keys_history_panel(page: ft.Page, party: PartyState, perspective: str) -> ft.Control:
+    visible = perspective == "global" or perspective.lower() == party.name.lower()
+    tooltips = get_tooltip_messages("double_ratchet")
+
+    panel_controls: list[ft.Control] = [
+        build_tooltip_text(
+            "Used keys history",
+            "",
+            tooltips.get("used_keys_history_notice", ""),
+        ),
+    ]
+
+    if not visible:
+        panel_controls.append(ft.Text("Hidden", color=ft.Colors.OUTLINE))
+    else:
+        sections: list[tuple[str, list]] = [
+            ("DH", party.key_history.dh_events),
+            ("RK", party.key_history.rk_events),
+            ("CKs", party.key_history.cks_events),
+            ("CKr", party.key_history.ckr_events),
+        ]
+
+        for section_label, events in sections:
+            panel_controls.append(ft.Text(section_label, weight="bold", size=12))
+            ordered_events = list(reversed(events))
+            if not ordered_events:
+                panel_controls.append(ft.Text("-", color=ft.Colors.OUTLINE))
+                continue
+            for event in ordered_events:
+                if section_label == "DH":
+                    public_text = str(event.public_value or "")
+                    private_text = event.key_value.hex() if isinstance(event.key_value, bytes) else str(event.key_value)
+                    pub_label = f"DHs_pub#{event.key_number} ({event.created_at_step})"
+                    priv_label = f"DHs_priv#{event.key_number} ({event.created_at_step})"
+                    panel_controls.append(
+                        build_tooltip_text(
+                            pub_label,
+                            last_n_chars(public_text, 10),
+                            get_key_tooltip_text(event),
+                            full_value=public_text,
+                            on_click=make_copy_handler(page, f"{party.name} {pub_label}", public_text),
+                        )
+                    )
+                    panel_controls.append(
+                        build_tooltip_text(
+                            priv_label,
+                            last_n_chars(private_text, 10),
+                            get_key_tooltip_text(event),
+                            full_value=private_text,
+                            on_click=make_copy_handler(page, f"{party.name} {priv_label}", private_text),
+                        )
+                    )
+                else:
+                    key_text = event.key_value.hex() if isinstance(event.key_value, bytes) else str(event.key_value)
+                    label = f"{event.key_type}#{event.key_number} ({event.created_at_step})"
+                    panel_controls.append(
+                        build_tooltip_text(
+                            label,
+                            last_n_chars(key_text, 10),
+                            get_key_tooltip_text(event),
+                            full_value=key_text,
+                            on_click=make_copy_handler(page, f"{party.name} {label}", key_text),
+                        )
+                    )
+
+    return ft.Container(
+        content=ft.Column(
+            panel_controls,
+            spacing=2,
+            tight=False,
+            horizontal_alignment=ft.CrossAxisAlignment.START,
+            scroll=ft.ScrollMode.AUTO,
+        ),
+        width=SIDE_PANEL_WIDTH,
+        expand=True,
+        padding=8,
+        border_radius=8,
     )
 
 
@@ -150,7 +238,7 @@ def build_timeline(
                 alignment=ft.MainAxisAlignment.CENTER,
             )
         ],
-        scroll=ft.ScrollMode.AUTO,
+        scroll=ft.ScrollMode.ALWAYS,
         expand=True,
         spacing=6,
     )
@@ -317,6 +405,15 @@ def build_visual(
     attacker_dashboard: ft.Control | None = None,
     attacker_analysis: list[dict] | None = None,
 ):
+    page_height = getattr(page, "height", None)
+    if page_height is None and getattr(page, "window", None) is not None:
+        page_height = getattr(page.window, "height", None)
+    if not isinstance(page_height, (int, float)) or page_height <= 0:
+        page_height = 900
+
+    attacker_view = perspective.lower() == "attacker"
+    timeline_height = max(280, int(page_height * (0.42 if attacker_view else 0.86)))
+
     initializer_party = session.initializer
     responder_party = session.responder
 
@@ -341,6 +438,9 @@ def build_visual(
         message_input=responder_input,
         on_send=responder_send,
     )
+    show_key_history = perspective.lower() != "attacker"
+    initializer_history = _build_used_keys_history_panel(page, initializer_party, perspective)
+    responder_history = _build_used_keys_history_panel(page, responder_party, perspective)
     timeline = build_timeline(
         session,
         perspective,
@@ -354,23 +454,35 @@ def build_visual(
 
     timeline_container = ft.Container(
         content=timeline,
-        expand=True,
+        height=timeline_height,
         padding=10,
+        clip_behavior=ft.ClipBehavior.HARD_EDGE,
     )
+
+    initializer_controls: list[ft.Control] = [initializer_panel]
+    responder_controls: list[ft.Control] = [responder_panel]
+    if show_key_history:
+        initializer_controls.extend([ft.Divider(height=10), initializer_history])
+        responder_controls.extend([ft.Divider(height=10), responder_history])
 
     top_row = ft.Row(
         [
             ft.Container(
-                ft.Column([initializer_panel], spacing=10, tight=True),
+                ft.Column(initializer_controls, spacing=10, tight=False, expand=True),
                 expand=True,
+                height=timeline_height,
                 padding=10,
             ),
-            ft.VerticalDivider(),
-            ft.Container(timeline_container, height=400, expand=True, padding=10),
-            ft.VerticalDivider(),
-            ft.Container(responder_panel, expand=True, padding=10),
+            ft.Container(timeline_container, expand=True, padding=10),
+            ft.Container(
+                ft.Column(responder_controls, spacing=10, tight=False, expand=True),
+                expand=True,
+                height=timeline_height,
+                padding=10,
+            ),
         ],
         expand=True,
+        height=timeline_height,
         vertical_alignment=ft.CrossAxisAlignment.START,
     )
 

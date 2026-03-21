@@ -12,14 +12,14 @@ def main(page: ft.Page):
 
     if hasattr(page, "window") and page.window is not None:
         page.window.width = 1600
-        page.window.height = 980
+        page.window.height = 1050
         page.window.min_width = 1400
         page.window.min_height = 900
     else:
         if hasattr(page, "window_width"):
             page.window_width = 1600
         if hasattr(page, "window_height"):
-            page.window_height = 980
+            page.window_height = 1050
 
     app_state = AppState()
     router = Router()

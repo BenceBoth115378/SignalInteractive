@@ -1,6 +1,8 @@
 {
   "double_ratchet": {
     "DHs": "This party's Diffie-Hellman ratchet key pair (private + public). The public part is sent in headers, while the private part is used for DH shared secret computations. It rotates on DH ratchet steps for forward secrecy.",
+    "DHs_pub": "This party's local Diffie-Hellman ratchet public key. It is sent in message headers so the party can detect DH ratchet changes and derive fresh secrets.",
+    "DHs_priv": "This party's local Diffie-Hellman ratchet private key. It stays local and is combined with the peer's DH public key to derive new root and chain keys.",
     "DHr": "The latest remote party Diffie-Hellman ratchet public key received from the peer. It is combined with the local DHs private key to derive fresh secrets.",
     "RK": "Root key for the Double Ratchet. It's the result of the shared secret computation using the DHr and DHs keys. It evolves during DH ratchet updates and is used to derive new sending and receiving chain keys.",
     "CKs": "Sending chain key. It advances for each outgoing message and derives a one-time message key for encryption.",
@@ -85,6 +87,7 @@
     "step_viz_receive_set_dhr": "The receiver replaces its stored remote public DH key (DHr) with the DH key extracted from the incoming message header. This assignment marks the beginning of the new ratchet epoch and will serve as the input to the first KDF_RK call.",
     "step_viz_receive_kdf_rk_1": "The first KDF_RK call in this DH ratchet step. A Diffie-Hellman computation is performed using the new header DH public key and the receiver's current private DH key. The resulting shared secret, together with the current Root Key (RK), is fed into the KDF to produce a fresh Root Key and the new Receiving Chain Key (CKr).",
     "step_viz_receive_set_nr_zero": "The receiving message counter (Nr) is reset to 0, marking the start of the new receiving chain in this epoch. Every subsequent incoming message will be counted from index 0 within this new chain.",
-    "step_viz_receive_kdf_rk_2": "The second KDF_RK call in this DH ratchet step. A Diffie-Hellman computation is performed using the same header DH public key and the receiver's freshly generated private DH key. The resulting shared secret, combined with the Root Key produced by KDF_RK #1, yields a new Root Key and the Sending Chain Key (CKs) for future outgoing messages."
+    "step_viz_receive_kdf_rk_2": "The second KDF_RK call in this DH ratchet step. A Diffie-Hellman computation is performed using the same header DH public key and the receiver's freshly generated private DH key. The resulting shared secret, combined with the Root Key produced by KDF_RK #1, yields a new Root Key and the Sending Chain Key (CKs) for future outgoing messages.",
+    "used_keys_history_notice": "Used keys history is shown only for visualization and educational purposes. In a real application, each key is deleted immediately after use."
   }
 }
