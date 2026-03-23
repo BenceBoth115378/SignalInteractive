@@ -1,7 +1,8 @@
 from typing import Any, Callable
 
 import flet as ft
-from components.data_classes import ReceiveStepVisualizationSnapshot, SendStepVisualizationSnapshot
+from components.data_classes import DHKeyPair, ReceiveStepVisualizationSnapshot, SendStepVisualizationSnapshot
+from modules.double_ratchet import external as ext
 from modules.tooltip_helpers import get_tooltip_messages
 
 
@@ -117,6 +118,7 @@ def _state_row(
     tooltip: str | None = None,
     full_value: Any = None,
     highlight: bool = False,
+    is_synced: bool = False,
 ) -> ft.Control:
     row = ft.Row(
         controls=[
@@ -142,7 +144,14 @@ def _state_row(
             border_radius=6,
             bgcolor=ft.Colors.PRIMARY_CONTAINER,
         )
-    return _with_tooltip(row_control, tooltip, full_value)
+    outer_container = ft.Container(
+        content=row_control,
+        padding=ft.Padding.symmetric(horizontal=4, vertical=2),
+        border_radius=6,
+        height=32,
+        border=ft.Border.all(color=ft.Colors.GREEN_600, width=2) if is_synced else None,
+    )
+    return _with_tooltip(outer_container, tooltip, full_value)
 
 
 def _party_state_panel(
@@ -150,8 +159,10 @@ def _party_state_panel(
     rows: list[tuple[str, str, str | None, Any]],
     tooltip: str | None = None,
     highlight_labels: set[str] | None = None,
+    synced_labels: set[str] | None = None,
 ) -> ft.Control:
     highlighted = highlight_labels or set()
+    synced = synced_labels or set()
     panel = ft.Container(
         content=ft.Column(
             controls=[
@@ -163,6 +174,7 @@ def _party_state_panel(
                         row_tooltip,
                         full_value,
                         highlight=label in highlighted,
+                        is_synced=label in synced,
                     )
                     for label, value, row_tooltip, full_value in rows
                 ],
@@ -557,16 +569,11 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
     after_dhs_pub_full = step_data.after.DHs_public
     before_dhs_priv_full = step_data.before.DHs_private
     after_dhs_priv_full = step_data.after.DHs_private
-    before_cks_full = step_data.before.CKs
     after_cks_full = step_data.after.CKs
     ckr_after_double_ratchet_full = step_data.ckr_after_double_ratchet
     ckr_before_kdf_ck_full = step_data.ckr_before_kdf_ck
     before_nr = step_data.before.Nr
     after_nr = step_data.after.Nr
-    before_ns = step_data.before.Ns
-    after_ns = step_data.after.Ns
-    before_pn = step_data.before.PN
-    after_pn = step_data.after.PN
     skipped_key_hit = step_data.skipped_key_hit
     dh_ratchet_needed = step_data.dh_ratchet_needed
     fast_forward_count = step_data.fast_forward_count
@@ -589,10 +596,56 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
     after_dhs_pub = _last_n_chars(after_dhs_pub_full, 8)
     before_dhs_priv = _last_n_chars(before_dhs_priv_full, 8)
     after_dhs_priv = _last_n_chars(after_dhs_priv_full, 8)
-    before_cks = _last_n_chars(before_cks_full, 8)
     after_cks = _last_n_chars(after_cks_full, 8)
     ckr_after_double_ratchet = _last_n_chars(ckr_after_double_ratchet_full, 8)
     ckr_before_kdf_ck = _last_n_chars(ckr_before_kdf_ck_full, 8)
+
+    rk_after_kdf_rk1_full: bytes | None = None
+    ss_kdf_rk1_full: bytes | None = None
+    ss_kdf_rk2_full: bytes | None = None
+
+    if all(
+        [
+            dh_ratchet_needed,
+            isinstance(before_dhs_priv_full, str),
+            isinstance(before_dhs_pub_full, str),
+            isinstance(header_dh_full, str),
+            isinstance(before_rk_full, bytes),
+        ]
+    ):
+        try:
+            ss_kdf_rk1_full = ext.DH(
+                DHKeyPair(private=before_dhs_priv_full, public=before_dhs_pub_full),
+                header_dh_full,
+            )
+            rk_after_kdf_rk1_full, kdf1_ckr_full = ext.KDF_RK(before_rk_full, ss_kdf_rk1_full)
+            if ckr_after_double_ratchet_full is None:
+                ckr_after_double_ratchet_full = kdf1_ckr_full
+                ckr_after_double_ratchet = _last_n_chars(ckr_after_double_ratchet_full, 8)
+        except ValueError:
+            rk_after_kdf_rk1_full = None
+            ss_kdf_rk1_full = None
+
+    if all(
+        [
+            dh_ratchet_needed,
+            isinstance(after_dhs_priv_full, str),
+            isinstance(after_dhs_pub_full, str),
+            isinstance(header_dh_full, str),
+            isinstance(rk_after_kdf_rk1_full, bytes),
+        ]
+    ):
+        try:
+            ss_kdf_rk2_full = ext.DH(
+                DHKeyPair(private=after_dhs_priv_full, public=after_dhs_pub_full),
+                header_dh_full,
+            )
+        except ValueError:
+            ss_kdf_rk2_full = None
+
+    rk_after_kdf_rk1 = _last_n_chars(rk_after_kdf_rk1_full, 8)
+    ss_kdf_rk1 = _last_n_chars(ss_kdf_rk1_full, 8)
+    ss_kdf_rk2 = _last_n_chars(ss_kdf_rk2_full, 8)
 
     step1_data_flow = ft.Column(
         controls=[
@@ -748,34 +801,6 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    dh_ratchet_before_rows = [
-        ("DHr", before_dhr, tooltips.get("step_viz_receive_before_dhr", ""), before_dhr_full),
-        ("DHs_pub", before_dhs_pub, tooltips.get("DHs_pub", ""), before_dhs_pub_full),
-        ("DHs_priv", before_dhs_priv, tooltips.get("DHs_priv", ""), before_dhs_priv_full),
-        ("RK", before_rk, tooltips.get("step_viz_receive_before_rk", ""), before_rk_full),
-        ("CKr", before_ckr, tooltips.get("step_viz_receive_before_ckr", ""), before_ckr_full),
-        ("CKs", before_cks, tooltips.get("step_viz_receive_dh_ratchet_before_cks", ""), before_cks_full),
-        ("PN", str(before_pn), tooltips.get("step_viz_receive_dh_ratchet_before_pn", ""), None),
-        ("Ns", str(before_ns), tooltips.get("step_viz_receive_dh_ratchet_before_ns", ""), None),
-    ]
-    dh_ratchet_after_rows = [
-        ("DHr", after_dhr, tooltips.get("step_viz_receive_after_dhr", ""), after_dhr_full),
-        ("DHs_pub", after_dhs_pub, tooltips.get("DHs_pub", ""), after_dhs_pub_full),
-        ("DHs_priv", after_dhs_priv, tooltips.get("DHs_priv", ""), after_dhs_priv_full),
-        ("RK", after_rk, tooltips.get("step_viz_receive_after_rk", ""), after_rk_full),
-        ("CKr", after_ckr, tooltips.get("step_viz_receive_after_ckr", ""), after_ckr_full),
-        ("CKs", after_cks, tooltips.get("step_viz_receive_dh_ratchet_after_cks", ""), after_cks_full),
-        ("PN", str(after_pn), tooltips.get("step_viz_receive_dh_ratchet_after_pn", ""), None),
-        ("Ns", str(after_ns), tooltips.get("step_viz_receive_dh_ratchet_after_ns", ""), None),
-    ]
-    dh_ratchet_before_values = {label: value for label, value, _, _ in dh_ratchet_before_rows}
-    dh_ratchet_after_values = {label: value for label, value, _, _ in dh_ratchet_after_rows}
-    dh_ratchet_changed_labels = {
-        label
-        for label, value in dh_ratchet_before_values.items()
-        if value != dh_ratchet_after_values.get(label)
-    }
-
     step_dh_ratchet_data_flow_1 = ft.Column(
         controls=[
             ft.Text("DH ratchet update (part 1)", weight="bold"),
@@ -799,6 +824,7 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
                 ),
                 width=340,
                 height=120,
+                circle=True,
                 tooltip=tooltips.get("step_viz_receive_complete_old_chain", ""),
                 full_value=(
                     f"header.pn={header_pn}, Nr={pn_fast_forward_from_nr}\n"
@@ -810,34 +836,15 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
                     f"All messages from the previous chain were received — nothing to skip."
                 ),
             ),
-            ft.Text("↓", size=24),
+            ft.Text("", size=24),
             flow_node(
                 "Set DHr",
                 f"Header.dh -> DHr\n{before_dhr} -> {_last_n_chars(header_dh_full, 8)}",
                 width=320,
                 height=110,
+                circle=True,
                 tooltip=tooltips.get("step_viz_receive_set_dhr", ""),
                 full_value=f"old DHr: {_to_text(before_dhr_full)}\nnew DHr: {_to_text(header_dh_full)}",
-            ),
-            ft.Text("↓", size=24),
-            flow_node(
-                "KDF_RK #1 -> (RK, CKr)",
-                f"input RK: {before_rk}\noutput CKr: {ckr_after_double_ratchet}",
-                width=320,
-                height=110,
-                tooltip=tooltips.get("step_viz_receive_kdf_rk_1", ""),
-                full_value=(
-                    f"DH input uses sender current public DH from header and our previous private DH.\n"
-                    f"RK before: {_to_text(before_rk_full)}\n"
-                    f"CKr after 1st KDF_RK: {_to_text(ckr_after_double_ratchet_full)}"
-                ),
-            ),
-            ft.Text("↓", size=24),
-            flow_node(
-                "Set Nr",
-                "Nr <- 0",
-                width=220,
-                tooltip=tooltips.get("step_viz_receive_set_nr_zero", ""),
             ),
         ],
         spacing=6,
@@ -847,45 +854,188 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
     step_dh_ratchet_data_flow_2 = ft.Column(
         controls=[
             ft.Text("DH ratchet update (part 2)", weight="bold"),
-            ft.Text("↓", size=24),
-            flow_node(
-                "Generate new DH key pair",
-                f"DHs_pub: {before_dhs_pub} -> {after_dhs_pub}\nDHs_priv: {before_dhs_priv} -> {after_dhs_priv}",
-                width=320,
-                height=100,
-                tooltip=tooltips.get("step_viz_receive_dh_ratchet_after_dhs", ""),
-                full_value=(
-                    f"old DHs_pub: {_to_text(before_dhs_pub_full)}\n"
-                    f"new DHs_pub: {_to_text(after_dhs_pub_full)}\n"
-                    f"old DHs_priv: {_to_text(before_dhs_priv_full)}\n"
-                    f"new DHs_priv: {_to_text(after_dhs_priv_full)}"
-                ),
+            ft.Row(
+                controls=[
+                    flow_node("DHr", after_dhr, tooltip=tooltips.get("step_viz_receive_after_dhr", ""), full_value=header_dh_full, width=170, height=90),
+                    flow_node("DHs_pub", before_dhs_pub, tooltip=tooltips.get("DHs_pub", ""), full_value=before_dhs_pub_full, width=170, height=90),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=16,
             ),
             ft.Text("↓", size=24),
             flow_node(
-                "KDF_RK #2 -> (RK, CKs)",
-                f"output CKs: {after_cks}\nRK now: {after_rk}",
-                width=320,
-                height=110,
-                tooltip=tooltips.get("step_viz_receive_kdf_rk_2", ""),
+                "DH",
+                "Inputs: DHr, DHs_pub",
+                width=200,
+                height=70,
+                circle=True,
+                tooltip=tooltips.get("step_viz_dh_computation", ""),
+            ),
+            ft.Text("↓", size=24),
+            flow_node("Shared secret (SS)", ss_kdf_rk1, width=200, height=70, tooltip=tooltips.get("step_viz_shared_secret", ""), full_value=ss_kdf_rk1_full),
+            ft.Text("↓", size=24),
+            ft.Row(
+                controls=[
+                    flow_node("RK", before_rk, tooltip=tooltips.get("step_viz_receive_before_rk", ""), full_value=before_rk_full, width=170, height=90),
+                    flow_node("SS", ss_kdf_rk1, tooltip=tooltips.get("step_viz_shared_secret", ""), full_value=ss_kdf_rk1_full, width=170, height=90),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=16,
+            ),
+            ft.Text("", size=24),
+            flow_node(
+                "KDF_RK #1",
+                width=200,
+                height=70,
+                circle=True,
+                tooltip=tooltips.get("step_viz_receive_kdf_rk_1", ""),
                 full_value=(
-                    f"DH input uses sender current public DH and our new private DH.\n"
-                    f"RK after ratchet: {_to_text(after_rk_full)}\n"
-                    f"CKs after 2nd KDF_RK: {_to_text(after_cks_full)}"
+                    f"RK before: {_to_text(before_rk_full)}\n"
+                    f"SS: {_to_text(ss_kdf_rk1_full)}\n"
+                    f"RK after: {_to_text(rk_after_kdf_rk1_full)}\n"
+                    f"CKr after: {_to_text(ckr_after_double_ratchet_full)}"
                 ),
+            ),
+            ft.Text("↓", size=24),
+            ft.Row(
+                controls=[
+                    flow_node("RK", rk_after_kdf_rk1, tooltip=tooltips.get("step_viz_receive_after_rk", ""), full_value=rk_after_kdf_rk1_full),
+                    flow_node("CKr", ckr_after_double_ratchet, tooltip=tooltips.get("step_viz_receive_after_ckr", ""), full_value=ckr_after_double_ratchet_full),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=16,
+            ),
+            ft.Text("", size=24),
+            flow_node(
+                "Set Nr",
+                "Nr <- 0",
+                width=220,
+                circle=True,
+                tooltip=tooltips.get("step_viz_receive_set_nr_zero", ""),
             ),
             ft.Divider(height=1),
             ft.Row(
                 controls=[
                     party_state_panel(
-                        "Before DH ratchet",
-                        dh_ratchet_before_rows,
-                        highlight_labels=dh_ratchet_changed_labels,
+                        "Receiver state before",
+                        [
+                            ("DHr", before_dhr, tooltips.get("step_viz_receive_before_dhr", ""), before_dhr_full),
+                            ("DHs_pub", before_dhs_pub, tooltips.get("DHs_pub", ""), before_dhs_pub_full),
+                            ("RK", before_rk, tooltips.get("step_viz_receive_before_rk", ""), before_rk_full),
+                            ("CKr", before_ckr, tooltips.get("step_viz_receive_before_ckr", ""), before_ckr_full),
+                            ("Nr", str(before_nr), tooltips.get("step_viz_receive_before_nr", ""), None),
+                        ],
                     ),
                     party_state_panel(
-                        "After DH ratchet",
-                        dh_ratchet_after_rows,
-                        highlight_labels=dh_ratchet_changed_labels,
+                        "Receiver state until this point",
+                        [
+                            ("DHr", _last_n_chars(header_dh_full, 8), tooltips.get("step_viz_receive_after_dhr", ""), header_dh_full),
+                            ("DHs_pub", before_dhs_pub, tooltips.get("DHs_pub", ""), before_dhs_pub_full),
+                            ("RK", rk_after_kdf_rk1, tooltips.get("step_viz_receive_after_rk", ""), rk_after_kdf_rk1_full),
+                            ("CKr", ckr_after_double_ratchet, tooltips.get("step_viz_receive_after_ckr", ""), ckr_after_double_ratchet_full),
+                            ("Nr", "0", tooltips.get("step_viz_receive_set_nr_zero", ""), 0),
+                        ],
+                        highlight_labels={"DHr", "RK", "CKr", "Nr"},
+                        synced_labels={"DHr", "RK", "CKr"},
+                    ),
+                    party_state_panel(
+                        "Sender state",
+                        [
+                            ("DHr", before_dhs_pub, tooltips.get("step_viz_receive_compare_dh", ""), before_dhs_pub_full),
+                            ("DHs_pub", _last_n_chars(header_dh_full, 8), tooltips.get("DHs_pub", ""), header_dh_full),
+                            ("RK", rk_after_kdf_rk1, tooltips.get("step_viz_receive_kdf_rk_1", ""), rk_after_kdf_rk1_full),
+                            ("CKs", ckr_after_double_ratchet, tooltips.get("step_viz_receive_kdf_rk_1", ""), ckr_after_double_ratchet_full),
+                        ],
+                        synced_labels={"DHs_pub", "RK", "CKs"},
+                    ),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                vertical_alignment=ft.CrossAxisAlignment.START,
+                spacing=20,
+                wrap=True,
+            ),
+        ],
+        spacing=6,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+
+    step_dh_ratchet_data_flow_3 = ft.Column(
+        controls=[
+            ft.Text("DH ratchet update (part 3)", weight="bold"),
+            ft.Row(
+                controls=[
+                    flow_node("DHr", after_dhr, tooltip=tooltips.get("step_viz_receive_after_dhr", ""), full_value=after_dhr_full, width=170, height=90),
+                    flow_node("DHs_pub", after_dhs_pub, tooltip=tooltips.get("DHs_pub", ""), full_value=after_dhs_pub_full, width=170, height=90),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=16,
+            ),
+            ft.Text("↓", size=24),
+            flow_node(
+                "DH",
+                "Inputs: DHr, DHs_pub",
+                width=200,
+                height=70,
+                circle=True,
+                tooltip=tooltips.get("step_viz_dh_computation", ""),
+            ),
+            ft.Text("↓", size=24),
+            flow_node("Shared secret (SS)", ss_kdf_rk2, width=200, height=70, tooltip=tooltips.get("step_viz_shared_secret", ""), full_value=ss_kdf_rk2_full),
+            ft.Text("", size=24),
+            ft.Row(
+                controls=[
+                    flow_node("RK", rk_after_kdf_rk1, tooltip=tooltips.get("step_viz_receive_after_rk", ""), full_value=rk_after_kdf_rk1_full, width=170, height=90),
+                    flow_node("SS", ss_kdf_rk2, tooltip=tooltips.get("step_viz_shared_secret", ""), full_value=ss_kdf_rk2_full, width=170, height=90),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=16,
+            ),
+            ft.Text("↓", size=24),
+            flow_node(
+                "KDF_RK #2",
+                width=200,
+                height=70,
+                circle=True,
+                tooltip=tooltips.get("step_viz_receive_kdf_rk_2", ""),
+                full_value=(
+                    f"RK before: {_to_text(rk_after_kdf_rk1_full)}\n"
+                    f"SS: {_to_text(ss_kdf_rk2_full)}\n"
+                    f"RK after: {_to_text(after_rk_full)}\n"
+                    f"CKs after: {_to_text(after_cks_full)}"
+                ),
+            ),
+            ft.Text("↓", size=24),
+            ft.Row(
+                controls=[
+                    flow_node("RK", after_rk, tooltip=tooltips.get("step_viz_receive_after_rk", ""), full_value=after_rk_full),
+                    flow_node("CKs", after_cks, tooltip=tooltips.get("step_viz_receive_dh_ratchet_after_cks", ""), full_value=after_cks_full),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=16,
+            ),
+            ft.Divider(height=1),
+            ft.Row(
+                controls=[
+                    party_state_panel(
+                        "Receiver state before part 3",
+                        [
+                            ("DHr", after_dhr, tooltips.get("step_viz_receive_after_dhr", ""), after_dhr_full),
+                            ("DHs_pub", after_dhs_pub, tooltips.get("DHs_pub", ""), after_dhs_pub_full),
+                            ("RK", rk_after_kdf_rk1, tooltips.get("step_viz_receive_after_rk", ""), rk_after_kdf_rk1_full),
+                            ("CKr", ckr_after_double_ratchet, tooltips.get("step_viz_receive_after_ckr", ""), ckr_after_double_ratchet_full),
+                            ("Nr", "0", tooltips.get("step_viz_receive_set_nr_zero", ""), None),
+                        ],
+                    ),
+                    party_state_panel(
+                        "Receiver state after part 3",
+                        [
+                            ("DHr", after_dhr, tooltips.get("step_viz_receive_after_dhr", ""), after_dhr_full),
+                            ("DHs_pub", after_dhs_pub, tooltips.get("DHs_pub", ""), after_dhs_pub_full),
+                            ("RK", after_rk, tooltips.get("step_viz_receive_after_rk", ""), after_rk_full),
+                            ("CKs", after_cks, tooltips.get("step_viz_receive_dh_ratchet_after_cks", ""), after_cks_full),
+                            ("Ns", "0", tooltips.get("step_viz_receive_dh_ratchet_after_ns", ""), None),
+                        ],
+                        highlight_labels={"RK", "CKs", "Ns"},
                     ),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
@@ -1015,6 +1165,12 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
                 {
                     "title": "DH ratchet update (part 2)",
                     "control": step_dh_ratchet_data_flow_2,
+                }
+            )
+            steps.append(
+                {
+                    "title": "DH ratchet update (part 3)",
+                    "control": step_dh_ratchet_data_flow_3,
                 }
             )
         steps.extend(
