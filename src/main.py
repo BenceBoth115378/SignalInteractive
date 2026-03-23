@@ -5,7 +5,7 @@ from components.router import Router
 
 
 def main(page: ft.Page):
-    page.title = "Signal Protocol"
+    page.title = "Signal Interactive"
     page.scroll = "auto"
 
     if hasattr(page, "window") and page.window is not None:
