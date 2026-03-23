@@ -518,11 +518,11 @@ class DoubleRatchetModule(BaseModule):
         def _auto_show_receive_visualization_after_send(step_data: SendStepVisualizationSnapshot | None) -> None:
             if step_data is None:
                 return
-            if app_state.perspective != "global":
-                return
             if not receive_step_visualization_checkbox.value:
                 return
             if not _effective_auto_receive_enabled():
+                return
+            if not _is_global_or_recipient_perspective(step_data):
                 return
             receive_snapshot = self._receive_snapshots.get(step_data.pending_id)
             if receive_snapshot is None:
@@ -531,6 +531,10 @@ class DoubleRatchetModule(BaseModule):
 
         def _is_attacker_perspective() -> bool:
             return app_state.perspective == "attacker"
+
+        def _is_global_or_recipient_perspective(step_data: SendStepVisualizationSnapshot) -> bool:
+            recipient_key = step_data.receiver.lower()
+            return app_state.perspective in {"global", recipient_key}
 
         def _effective_auto_receive_enabled() -> bool:
             return _is_attacker_perspective() or auto_receive_user_enabled
@@ -618,6 +622,8 @@ class DoubleRatchetModule(BaseModule):
                     step_data,
                     on_close=lambda: _auto_show_receive_visualization_after_send(step_data),
                 )
+            elif not warning_message:
+                _auto_show_receive_visualization_after_send(step_data)
 
         def on_send_bob(e) -> None:
             try:
@@ -643,6 +649,8 @@ class DoubleRatchetModule(BaseModule):
                     step_data,
                     on_close=lambda: _auto_show_receive_visualization_after_send(step_data),
                 )
+            elif not warning_message:
+                _auto_show_receive_visualization_after_send(step_data)
 
         def on_receive_pending(recipient: str, pending_id: int) -> None:
             step_data = self.receive_message(recipient, pending_id)
