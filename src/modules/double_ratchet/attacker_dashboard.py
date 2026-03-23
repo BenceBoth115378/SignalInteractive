@@ -6,7 +6,7 @@ import flet as ft
 
 from components.data_classes import DHKeyPair, DoubleRatchetState, Header
 from modules.base_view import last_n_chars
-from modules.double_ratchet import external as ext
+from modules import external as ext
 from modules.double_ratchet.key_history import get_key_display_label, get_key_tooltip_text
 
 

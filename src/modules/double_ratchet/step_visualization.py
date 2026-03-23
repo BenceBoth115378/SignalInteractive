@@ -2,7 +2,7 @@ from typing import Any, Callable
 
 import flet as ft
 from components.data_classes import DHKeyPair, ReceiveStepVisualizationSnapshot, SendStepVisualizationSnapshot
-from modules.double_ratchet import external as ext
+from modules import external as ext
 from modules.tooltip_helpers import get_tooltip_messages
 
 

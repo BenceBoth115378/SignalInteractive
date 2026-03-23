@@ -16,7 +16,7 @@ from modules.double_ratchet.logic import (
     RatchetReceiveKey,
     initialize_session,
 )
-from modules.double_ratchet import external as ext
+from modules import external as ext
 from modules.double_ratchet.step_visualization import (
     show_receiving_step_visualization_dialog,
     show_sending_step_visualization_dialog,
@@ -506,6 +506,26 @@ class DoubleRatchetModule(BaseModule):
             dialog.open = True
             page.update()
 
+        if perspective_selector is None:
+            def _on_perspective_change_local(e):
+                app_state.perspective = e.control.value
+                refresh_view()
+                page.update()
+
+            perspective_selector = ft.RadioGroup(
+                value=app_state.perspective,
+                content=ft.Row(
+                    controls=[
+                        ft.Radio(value="global", label="Global"),
+                        ft.Radio(value="alice", label="Alice"),
+                        ft.Radio(value="bob", label="Bob"),
+                        ft.Radio(value="attacker", label="Attacker"),
+                    ],
+                    spacing=10,
+                ),
+                on_change=_on_perspective_change_local,
+            )
+
         def show_step_visualization(
             step_data: SendStepVisualizationSnapshot,
             on_close=None,
@@ -700,7 +720,7 @@ class DoubleRatchetModule(BaseModule):
                 ft.Row(
                     controls=[
                         message_count,
-                        perspective_selector if perspective_selector is not None else ft.Container(expand=True),
+                        perspective_selector,
                         ft.TextButton("Reset application", on_click=on_reset_module),
                     ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,

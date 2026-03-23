@@ -1,15 +1,38 @@
 from modules.double_ratchet.module import DoubleRatchetModule
+from modules.x3dh.module import X3DHModule
 
 
 class Router:
 
     def __init__(self):
         self.modules = {
-            "double_ratchet": DoubleRatchetModule()
+            "double_ratchet": DoubleRatchetModule(),
+            "x3dh": X3DHModule(),
+        }
+        self.module_cards = {
+            "double_ratchet": {
+                "id": "double_ratchet",
+                "title": "Double Ratchet",
+                "subtitle": "Post-X3DH messaging",
+                "description": "Interactive ratchet simulation with message timeline, attacker perspective, and send/receive step visualization.",
+            },
+            "x3dh": {
+                "id": "x3dh",
+                "title": "X3DH",
+                "subtitle": "Session bootstrap",
+                "description": "Three-phase model of registration, prekey-bundle processing, and initial message establishment with SK and AD checks.",
+            },
         }
 
     def get_current_module(self, app_state):
         return self.modules[app_state.current_module]
+
+    def get_module_cards(self) -> list[dict]:
+        return [
+            self.module_cards[module_id]
+            for module_id in self.modules.keys()
+            if module_id in self.module_cards
+        ]
 
     def export_state(self) -> dict:
         module_state = {}

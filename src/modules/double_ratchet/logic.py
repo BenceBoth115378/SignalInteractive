@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from components.data_classes import DHKeyPair, Header, LimitedSkippedKeys, PartyState, DoubleRatchetState
-from . import external as ext
+from modules import external as ext
 
 
 def _require_dh_pair(state: PartyState) -> DHKeyPair:
