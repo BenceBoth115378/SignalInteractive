@@ -5,6 +5,9 @@ from typing import Any
 import flet as ft
 
 
+SUMMARY_PANEL_HEIGHT = 132
+
+
 def _short(value: str | None, length: int = 12) -> str:
     if not value:
         return "-"
@@ -32,6 +35,7 @@ def _build_party_summary(title: str, payload: dict[str, Any] | None) -> ft.Contr
             border=ft.Border.all(1, ft.Colors.OUTLINE),
             border_radius=8,
             padding=10,
+            height=SUMMARY_PANEL_HEIGHT,
             expand=True,
         )
 
@@ -54,6 +58,7 @@ def _build_party_summary(title: str, payload: dict[str, Any] | None) -> ft.Contr
         border=ft.Border.all(1, ft.Colors.OUTLINE),
         border_radius=8,
         padding=10,
+        height=SUMMARY_PANEL_HEIGHT,
         expand=True,
     )
 
@@ -90,6 +95,7 @@ def _build_server_summary(server: dict[str, Any], alice_needs_to_upload_opk: boo
         border=ft.Border.all(1, ft.Colors.OUTLINE),
         border_radius=8,
         padding=10,
+        height=SUMMARY_PANEL_HEIGHT,
         expand=True,
     )
 
@@ -123,7 +129,7 @@ def _phase1_container(
     left = ft.Container(
         content=ft.Column(
             controls=[
-                _build_party_summary("Alice", state.get("alice_local")),
+                ft.Text("Alice Actions", weight=ft.FontWeight.BOLD),
                 ft.Row([ft.Button("Generate Alice keys", on_click=on_generate_alice)]),
                 ft.Row([ft.Button("Upload initial bundle", on_click=on_upload_alice_bundle)]),
                 ft.Row([upload_button_container], expand=True),
@@ -137,7 +143,7 @@ def _phase1_container(
     middle = ft.Container(
         content=ft.Column(
             controls=[
-                _build_server_summary(state["server_state"], alice_needs_to_upload_opk),
+                ft.Text("Server Actions", weight=ft.FontWeight.BOLD),
                 ft.Row([
                     ft.Button(
                         "Send 1 Alice OPK to an another requester",
@@ -189,29 +195,39 @@ def _phase2_container(
         ad_preview = _short(derived.get("associated_data"), 20)
         dh_count = str(derived.get("dh_count", "-"))
 
+    buttons = ft.Column(
+        controls=[
+            ft.Button("1) Request Bob prekey bundle", on_click=on_request_bob_bundle),
+            ft.Button("2) Verify Bob signed prekey signature", on_click=on_verify_signature),
+            ft.Button("3) Generate EK and derive SK (3 or 4 DH)", on_click=on_generate_ek_and_sk),
+            ft.Button("4) Compute associated data (AD)", on_click=on_compute_ad),
+        ],
+        spacing=8,
+    )
+
+    texts = ft.Column(
+        controls=[
+            ft.Text(f"Bob bundle status: {bundle_status}"),
+            ft.Text(f"Derived shared secret preview: {sk_preview}"),
+            ft.Text(f"Derived associated data preview: {ad_preview}"),
+            ft.Text(f"DH computations performed: {dh_count}"),
+        ],
+        spacing=4,
+    )
+
     return ft.Container(
         content=ft.Column(
             controls=[
-                ft.Text("2. Requesting Prekey Bundle & Generating Shared Secret", size=18, weight=ft.FontWeight.BOLD),
-                ft.Text("Button chain: request bundle -> verify signature -> generate EK/SK -> compute AD"),
-                ft.Column(
-                    controls=[
-                        ft.Button("1) Request Bob prekey bundle", on_click=on_request_bob_bundle),
-                        ft.Button("2) Verify Bob signed prekey signature", on_click=on_verify_signature),
-                        ft.Button("3) Generate EK and derive SK (3 or 4 DH)", on_click=on_generate_ek_and_sk),
-                        ft.Button("4) Compute associated data (AD)", on_click=on_compute_ad),
-                    ],
-                    spacing=8,
-                ),
-                ft.Divider(height=8),
-                ft.Text(f"Bundle status: {bundle_status}"),
-                ft.Text(f"Signature verified: {state.get('phase2_signature_verified', False)}"),
-                ft.Text(f"DH count used: {dh_count}"),
-                ft.Text(f"SK (tail): {sk_preview}"),
-                ft.Text(f"AD (tail): {ad_preview}"),
+                ft.Text("2. Alice computes shared secret and AD", size=18, weight=ft.FontWeight.BOLD),
+                ft.Row([buttons,
+                        ft.VerticalDivider(),
+                        texts],
+                       expand=True,
+                       vertical_alignment=ft.CrossAxisAlignment.START),
             ],
             spacing=8,
         ),
+
         border=ft.Border.all(1, ft.Colors.OUTLINE),
         border_radius=10,
         padding=12,
@@ -378,8 +394,19 @@ def build_visual(
         expand=True,
     )
 
+    summary_section = ft.Row(
+        controls=[
+            ft.Row([_build_party_summary("Alice", state.get("alice_local"))]),
+            ft.Row([_build_party_summary("Bob", state.get("bob_local"))]),
+            ft.Row([_build_server_summary(state["server_state"], state.get("alice_needs_to_upload_opk", False))]),
+        ],
+        spacing=8,
+    )
+
     timeline_panel = ft.Column(
         controls=[
+            summary_section,
+            ft.Divider(height=8),
             ft.Text("Timeline", weight=ft.FontWeight.BOLD, size=14),
             _build_event_timeline(state.get("events", []), max_items=20),
         ],
