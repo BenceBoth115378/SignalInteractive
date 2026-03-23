@@ -91,5 +91,29 @@
     "step_viz_receive_set_nr_zero": "The receiving message counter (Nr) is reset to 0, marking the start of the new receiving chain in this epoch. Every subsequent incoming message will be counted from index 0 within this new chain.",
     "step_viz_receive_kdf_rk_2": "The second KDF_RK call in this DH ratchet step. A Diffie-Hellman computation is performed using the same header DH public key and the receiver's freshly generated private DH key. The resulting shared secret, combined with the Root Key produced by KDF_RK #1, yields a new Root Key and the Sending Chain Key (CKs) for future outgoing messages.",
     "used_keys_history_notice": "Used keys history is shown only for visualization and educational purposes. In a real application, each key is deleted immediately after use."
+  },
+  "x3dh": {
+    "progressive_flow": "X3DH is shown in three educational phases. Complete each phase in sequence to unlock the next one and observe what data is produced.",
+    "timeline": "Chronological log of X3DH actions and outcomes. Recent events appear at the bottom.",
+    "event": "A protocol event emitted by an action in the simulation. Use this log to track state transitions.",
+    "party_not_initialized": "This party has not generated local keys yet in the current session.",
+    "IK_pub": "Identity Key (IK) public value for this party. It identifies the party and participates in X3DH authentication and key agreement context.",
+    "SPK_pub": "Signed Prekey (SPK) public value for this party. It is signed by identity-derived signing proof and used by initiators during bundle processing.",
+    "identity_signing_proof": "Indicates whether identity-linked signing material is present for SPK signature validation.",
+    "local_opk_count": "Number of one-time prekeys (OPKs) currently stored in this party's local state.",
+    "alice_bundle_status": "Whether Alice's initial prekey bundle is currently uploaded on the server.",
+    "alice_server_opk_count": "Count of Alice OPKs currently available on the server for distribution to requesters.",
+    "bob_bundle_status": "Whether Bob's prekey bundle is currently available on the server.",
+    "bob_server_opk_count": "Count of Bob OPKs currently available on the server.",
+    "phase2_bob_bundle_status": "Result of Alice requesting Bob's bundle. 'with OPK' means an OPK was included; 'without OPK' means only IK+SPK path was used.",
+    "phase2_shared_secret_preview": "Preview of the derived shared secret after Alice performs X3DH DH computations and KDF.",
+    "phase2_ad_preview": "Preview of associated data (AD) bound to the initial message context (identities, SPK, EK, OPK id if present).",
+    "phase2_dh_count": "How many DH computations were used for this run: 3 (no OPK) or 4 (with OPK).",
+    "phase3_message_status": "Shows whether Alice has already prepared and sent the initial encrypted X3DH message.",
+    "phase3_ad_match": "Whether Bob's locally recomputed associated data matches the AD sent with the initial message.",
+    "phase3_shared_secret_match": "Whether Bob derived the same shared secret as Alice.",
+    "phase3_decryption_ok": "Whether Bob successfully decrypted the initial ciphertext using the derived shared secret and AD.",
+    "phase3_dh_count": "Number of DH computations Bob used while processing the initial message.",
+    "phase3_decrypted_text": "Bob's decrypted plaintext output from the initial X3DH message processing step."
   }
 }

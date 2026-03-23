@@ -178,6 +178,7 @@ class X3DHModule(BaseModule):
             state_data = self._state_data()
             visual_container.content = build_visual(
                 state_data,
+                page,
                 status_text,
                 phase2_message_input,
                 on_generate_alice,

@@ -4,8 +4,11 @@ from typing import Any
 
 import flet as ft
 
+from modules.base_view import format_key, last_n_chars, make_copy_handler
+from modules.tooltip_helpers import build_tooltip_text, get_tooltip_messages
 
-SUMMARY_PANEL_HEIGHT = 132
+
+SUMMARY_PANEL_HEIGHT = 150
 
 
 def _short(value: str | None, length: int = 12) -> str:
@@ -16,22 +19,60 @@ def _short(value: str | None, length: int = 12) -> str:
     return value[-length:]
 
 
-def _build_event_timeline(events: list[Any], max_items: int = 10) -> ft.Control:
+
+def _build_tooltip_value(
+    page: ft.Page | None,
+    tooltips: dict[str, str],
+    label: str,
+    full_value: Any,
+    display_length: int = 12,
+) -> ft.Control:
+    normalized = format_key(full_value)
+    display = last_n_chars(normalized, display_length) if normalized not in {"", "None"} else normalized
+    copy_handler = make_copy_handler(page, label, normalized) if page is not None and normalized not in {"", "None"} else None
+    return build_tooltip_text(
+        label,
+        display,
+        tooltips.get(label, ""),
+        full_value=normalized if normalized not in {"", "None"} else None,
+        on_click=copy_handler,
+    )
+
+
+def _build_event_timeline(events: list[Any], tooltips: dict[str, str], max_items: int = 10) -> ft.Control:
     if not events:
         return ft.Column([ft.Text("No events yet.", color=ft.Colors.ON_SURFACE_VARIANT)], spacing=4)
 
     tail = events[-max_items:]
     return ft.Column(
-        controls=[ft.Text(f"- {event}", size=12) for event in tail],
+        controls=[
+            build_tooltip_text(
+                "event",
+                f"- {event}",
+                tooltips.get("event", ""),
+                full_value=str(event),
+            )
+            for event in tail
+        ],
         spacing=4,
         scroll=ft.ScrollMode.AUTO,
     )
 
 
-def _build_party_summary(title: str, payload: dict[str, Any] | None) -> ft.Control:
+def _build_party_summary(
+    title: str,
+    payload: dict[str, Any] | None,
+    page: ft.Page | None,
+    tooltips: dict[str, str],
+) -> ft.Control:
     if not isinstance(payload, dict):
         return ft.Container(
-            content=ft.Column([ft.Text(title, weight=ft.FontWeight.BOLD), ft.Text("Not initialized", color=ft.Colors.ON_SURFACE_VARIANT)]),
+            content=ft.Column(
+                [
+                    ft.Text(title, weight=ft.FontWeight.BOLD),
+                    build_tooltip_text("party_not_initialized", "Not initialized", tooltips.get("party_not_initialized", "")),
+                ]
+            ),
             border=ft.Border.all(1, ft.Colors.OUTLINE),
             border_radius=8,
             padding=10,
@@ -48,10 +89,20 @@ def _build_party_summary(title: str, payload: dict[str, Any] | None) -> ft.Contr
         content=ft.Column(
             controls=[
                 ft.Text(title, weight=ft.FontWeight.BOLD),
-                ft.Text(f"IK pub: {_short(identity_pub)}"),
-                ft.Text(f"SPK pub: {_short(spk_pub)}"),
-                ft.Text(f"Identity signing proof: {'present' if signing_pub else 'missing'}"),
-                ft.Text(f"OPKs available (local): {opk_count}"),
+                _build_tooltip_value(page, tooltips, "IK_pub", identity_pub),
+                _build_tooltip_value(page, tooltips, "SPK_pub", spk_pub),
+                build_tooltip_text(
+                    "identity_signing_proof",
+                    "present" if signing_pub else "missing",
+                    tooltips.get("identity_signing_proof", ""),
+                    full_value=signing_pub or None,
+                    on_click=make_copy_handler(page, "identity_signing_proof", signing_pub) if page is not None and signing_pub else None,
+                ),
+                build_tooltip_text(
+                    "local_opk_count",
+                    str(opk_count),
+                    tooltips.get("local_opk_count", ""),
+                ),
             ],
             spacing=4,
         ),
@@ -63,7 +114,12 @@ def _build_party_summary(title: str, payload: dict[str, Any] | None) -> ft.Contr
     )
 
 
-def _build_server_summary(server: dict[str, Any], alice_needs_to_upload_opk: bool = False) -> ft.Control:
+def _build_server_summary(
+    server: dict[str, Any],
+    page: ft.Page | None,
+    tooltips: dict[str, str],
+    alice_needs_to_upload_opk: bool = False,
+) -> ft.Control:
     alice_bundle = server.get("alice_bundle")
     bob_bundle = server.get("bob_bundle")
     alice_opk_count = len(server.get('alice_available_opk_ids', []))
@@ -75,20 +131,43 @@ def _build_server_summary(server: dict[str, Any], alice_needs_to_upload_opk: boo
         opk_bg_color = ft.Colors.YELLOW_300
 
     alice_opk_display = ft.Container(
-        content=ft.Text(f"Alice OPKs on server: {alice_opk_count}", weight=ft.FontWeight.W_500),
+        content=build_tooltip_text(
+            "alice_server_opk_count",
+            str(alice_opk_count),
+            tooltips.get("alice_server_opk_count", ""),
+        ),
         bgcolor=opk_bg_color,
         padding=6,
         border_radius=4,
-    ) if opk_bg_color else ft.Text(f"Alice OPKs on server: {alice_opk_count}")
+    ) if opk_bg_color else build_tooltip_text(
+        "alice_server_opk_count",
+        str(alice_opk_count),
+        tooltips.get("alice_server_opk_count", ""),
+    )
+
+    _ = page
+    _ = alice_needs_to_upload_opk
 
     return ft.Container(
         content=ft.Column(
             controls=[
                 ft.Text("Server", weight=ft.FontWeight.BOLD),
-                ft.Text(f"Alice bundle: {'uploaded' if isinstance(alice_bundle, dict) else 'missing'}"),
+                build_tooltip_text(
+                    "alice_bundle_status",
+                    "uploaded" if isinstance(alice_bundle, dict) else "missing",
+                    tooltips.get("alice_bundle_status", ""),
+                ),
                 alice_opk_display,
-                ft.Text(f"Bob bundle: {'available' if isinstance(bob_bundle, dict) else 'missing'}"),
-                ft.Text(f"Bob OPKs on server: {len(server.get('bob_available_opk_ids', []))}"),
+                build_tooltip_text(
+                    "bob_bundle_status",
+                    "available" if isinstance(bob_bundle, dict) else "missing",
+                    tooltips.get("bob_bundle_status", ""),
+                ),
+                build_tooltip_text(
+                    "bob_server_opk_count",
+                    str(len(server.get("bob_available_opk_ids", []))),
+                    tooltips.get("bob_server_opk_count", ""),
+                ),
             ],
             spacing=4,
         ),
@@ -175,6 +254,7 @@ def _phase1_container(
 
 def _phase2_container(
     state: dict[str, Any],
+    tooltips: dict[str, str],
     on_request_bob_bundle,
     on_verify_signature,
     on_generate_ek_and_sk,
@@ -207,10 +287,20 @@ def _phase2_container(
 
     texts = ft.Column(
         controls=[
-            ft.Text(f"Bob bundle status: {bundle_status}"),
-            ft.Text(f"Derived shared secret preview: {sk_preview}"),
-            ft.Text(f"Derived associated data preview: {ad_preview}"),
-            ft.Text(f"DH computations performed: {dh_count}"),
+            build_tooltip_text("phase2_bob_bundle_status", bundle_status, tooltips.get("phase2_bob_bundle_status", "")),
+            build_tooltip_text(
+                "phase2_shared_secret_preview",
+                sk_preview,
+                tooltips.get("phase2_shared_secret_preview", ""),
+                full_value=derived.get("shared_secret") if isinstance(derived, dict) else None,
+            ),
+            build_tooltip_text(
+                "phase2_ad_preview",
+                ad_preview,
+                tooltips.get("phase2_ad_preview", ""),
+                full_value=derived.get("associated_data") if isinstance(derived, dict) else None,
+            ),
+            build_tooltip_text("phase2_dh_count", dh_count, tooltips.get("phase2_dh_count", "")),
         ],
         spacing=4,
     )
@@ -236,6 +326,8 @@ def _phase2_container(
 
 def _phase3_container(
     state: dict[str, Any],
+    page: ft.Page | None,
+    tooltips: dict[str, str],
     phase2_message_input: ft.TextField,
     on_send_initial_message,
     on_bob_receive,
@@ -249,9 +341,10 @@ def _phase3_container(
                 ft.Text("Alice", weight=ft.FontWeight.BOLD),
                 phase2_message_input,
                 ft.Button("Send initial message", on_click=on_send_initial_message),
-                ft.Text(
+                build_tooltip_text(
+                    "phase3_message_status",
                     "Message prepared" if isinstance(initial_message, dict) else "No initial message sent yet.",
-                    color=ft.Colors.ON_SURFACE_VARIANT,
+                    tooltips.get("phase3_message_status", ""),
                 ),
             ],
             spacing=8,
@@ -270,11 +363,21 @@ def _phase3_container(
     if isinstance(bob_result, dict):
         bob_controls.extend(
             [
-                ft.Text(f"AD match: {bob_result.get('ad_matches', False)}"),
-                ft.Text(f"Shared secret match: {bob_result.get('shared_secret_matches', False)}"),
-                ft.Text(f"Decryption OK: {bob_result.get('decryption_ok', False)}"),
-                ft.Text("DH count: " + str(bob_result.get("dh_count", "-"))),
-                ft.Text(f"Decrypted: {bob_result.get('decrypted_text', '-')}", selectable=True),
+                build_tooltip_text("phase3_ad_match", str(bob_result.get("ad_matches", False)), tooltips.get("phase3_ad_match", "")),
+                build_tooltip_text(
+                    "phase3_shared_secret_match",
+                    str(bob_result.get("shared_secret_matches", False)),
+                    tooltips.get("phase3_shared_secret_match", ""),
+                ),
+                build_tooltip_text("phase3_decryption_ok", str(bob_result.get("decryption_ok", False)), tooltips.get("phase3_decryption_ok", "")),
+                build_tooltip_text("phase3_dh_count", str(bob_result.get("dh_count", "-")), tooltips.get("phase3_dh_count", "")),
+                build_tooltip_text(
+                    "phase3_decrypted_text",
+                    _short(str(bob_result.get("decrypted_text", "-")), 24),
+                    tooltips.get("phase3_decrypted_text", ""),
+                    full_value=str(bob_result.get("decrypted_text", "-")),
+                    on_click=make_copy_handler(page, "phase3_decrypted_text", str(bob_result.get("decrypted_text", "-"))) if page is not None else None,
+                ),
             ]
         )
     else:
@@ -304,6 +407,7 @@ def _phase3_container(
 
 def build_visual(
     state: dict[str, Any],
+    page: ft.Page,
     status_text: ft.Text,
     phase2_message_input: ft.TextField,
     on_generate_alice,
@@ -322,6 +426,7 @@ def build_visual(
     is_phase1_done: bool,
     is_phase2_done: bool,
 ) -> ft.Control:
+    tooltips = get_tooltip_messages("x3dh")
 
     header_controls: list[ft.Control] = [
         ft.Row(
@@ -332,9 +437,10 @@ def build_visual(
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
-        ft.Text(
+        build_tooltip_text(
+            "progressive_flow",
             "Progressive flow: finish phase 1 to reveal phase 2, then finish phase 2 to reveal phase 3.",
-            color=ft.Colors.ON_SURFACE_VARIANT,
+            tooltips.get("progressive_flow", ""),
         ),
         status_text,
     ]
@@ -356,6 +462,7 @@ def build_visual(
         phase_controls.append(
             _phase2_container(
                 state,
+                tooltips,
                 on_request_bob_bundle,
                 on_verify_signature,
                 on_generate_ek_and_sk,
@@ -374,6 +481,8 @@ def build_visual(
         phase_controls.append(
             _phase3_container(
                 state,
+                page,
+                tooltips,
                 phase2_message_input,
                 on_send_initial_message,
                 on_bob_receive,
@@ -396,9 +505,16 @@ def build_visual(
 
     summary_section = ft.Row(
         controls=[
-            ft.Row([_build_party_summary("Alice", state.get("alice_local"))]),
-            ft.Row([_build_party_summary("Bob", state.get("bob_local"))]),
-            ft.Row([_build_server_summary(state["server_state"], state.get("alice_needs_to_upload_opk", False))]),
+            ft.Row([_build_party_summary("Alice", state.get("alice_local"), page, tooltips)]),
+            ft.Row([_build_party_summary("Bob", state.get("bob_local"), page, tooltips)]),
+            ft.Row([
+                _build_server_summary(
+                    state["server_state"],
+                    page,
+                    tooltips,
+                    state.get("alice_needs_to_upload_opk", False),
+                )
+            ]),
         ],
         spacing=8,
     )
@@ -407,8 +523,8 @@ def build_visual(
         controls=[
             summary_section,
             ft.Divider(height=8),
-            ft.Text("Timeline", weight=ft.FontWeight.BOLD, size=14),
-            _build_event_timeline(state.get("events", []), max_items=20),
+            build_tooltip_text("timeline", "Timeline", tooltips.get("timeline", "")),
+            _build_event_timeline(state.get("events", []), tooltips, max_items=20),
         ],
         spacing=6,
         scroll=ft.ScrollMode.AUTO,
