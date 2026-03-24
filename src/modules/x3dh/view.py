@@ -190,29 +190,37 @@ def _phase1_container(
 ) -> ft.Control:
     alice_generated = bool(state.get("alice_generated", False))
     alice_registered = isinstance(state.get("server_state", {}).get("alice_bundle"), dict)
+    highlight_generate = not alice_generated
+    highlight_upload_initial = alice_generated and not alice_registered
+
+    generate_button = ft.Button(
+        "Generate Alice keys",
+        on_click=on_generate_alice,
+        disabled=alice_generated,
+        style=ft.ButtonStyle(bgcolor=ft.Colors.ORANGE_300) if highlight_generate else None,
+    )
+
+    upload_initial_button = ft.Button(
+        "Upload initial bundle",
+        on_click=on_upload_alice_bundle,
+        disabled=(not alice_generated) or alice_registered,
+        style=ft.ButtonStyle(bgcolor=ft.Colors.ORANGE_300) if highlight_upload_initial else None,
+    )
 
     upload_button = ft.Button(
         "Alice generates and uploads new OPK",
         on_click=on_alice_upload_new_opk,
         disabled=(not alice_generated) or (not alice_registered),
+        style=ft.ButtonStyle(bgcolor=ft.Colors.ORANGE_300) if alice_needs_to_upload_opk else None,
     )
-    if alice_needs_to_upload_opk:
-        upload_button_container = ft.Container(
-            content=upload_button,
-            border=ft.Border.all(3, ft.Colors.ORANGE),
-            border_radius=4,
-            padding=2,
-        )
-    else:
-        upload_button_container = ft.Container(content=upload_button)
 
     left = ft.Container(
         content=ft.Column(
             controls=[
                 ft.Text("Alice Actions", weight=ft.FontWeight.BOLD),
-                ft.Row([ft.Button("Generate Alice keys", on_click=on_generate_alice, disabled=alice_generated)]),
-                ft.Row([ft.Button("Upload initial bundle", on_click=on_upload_alice_bundle, disabled=(not alice_generated) or alice_registered)]),
-                ft.Row([upload_button_container], expand=True),
+                ft.Row([generate_button]),
+                ft.Row([upload_initial_button]),
+                ft.Row([upload_button], expand=True),
                 ft.Row([ft.Button("Alice generates and uploads new SPK bundle", on_click=on_alice_rotate_spk, disabled=(not alice_generated) or (not alice_registered))]),
             ],
             spacing=8,
@@ -264,6 +272,10 @@ def _phase2_container(
 ) -> ft.Control:
     bundle = state.get("last_bundle_for_alice")
     derived = state.get("alice_derived")
+    bundle_requested = isinstance(bundle, dict)
+    signature_verified = bool(state.get("phase2_signature_verified", False))
+    ek_generated = bool(state.get("phase2_ek_generated", False))
+    ad_computed = isinstance(derived, dict) and isinstance(derived.get("associated_data"), str)
 
     bundle_status = "not requested"
     if isinstance(bundle, dict):
@@ -277,12 +289,42 @@ def _phase2_container(
         ad_preview = _short(derived.get("associated_data"), 20)
         dh_count = str(derived.get("dh_count", "-"))
 
+    highlight_request = enabled and not bundle_requested
+    highlight_verify = enabled and bundle_requested and not signature_verified
+    highlight_generate_ek = enabled and signature_verified and not ek_generated
+    highlight_compute_ad = enabled and ek_generated and not ad_computed
+
+    request_button = ft.Button(
+        "1) Request Bob prekey bundle",
+        on_click=on_request_bob_bundle,
+        disabled=not enabled,
+        style=ft.ButtonStyle(bgcolor=ft.Colors.ORANGE_300) if highlight_request else None,
+    )
+    verify_button = ft.Button(
+        "2) Verify Bob signed prekey signature",
+        on_click=on_verify_signature,
+        disabled=not enabled,
+        style=ft.ButtonStyle(bgcolor=ft.Colors.ORANGE_300) if highlight_verify else None,
+    )
+    generate_ek_button = ft.Button(
+        "3) Generate EK and derive SK (3 or 4 DH)",
+        on_click=on_generate_ek_and_sk,
+        disabled=not enabled,
+        style=ft.ButtonStyle(bgcolor=ft.Colors.ORANGE_300) if highlight_generate_ek else None,
+    )
+    compute_ad_button = ft.Button(
+        "4) Compute associated data (AD)",
+        on_click=on_compute_ad,
+        disabled=not enabled,
+        style=ft.ButtonStyle(bgcolor=ft.Colors.ORANGE_300) if highlight_compute_ad else None,
+    )
+
     buttons = ft.Column(
         controls=[
-            ft.Button("1) Request Bob prekey bundle", on_click=on_request_bob_bundle, disabled=not enabled),
-            ft.Button("2) Verify Bob signed prekey signature", on_click=on_verify_signature, disabled=not enabled),
-            ft.Button("3) Generate EK and derive SK (3 or 4 DH)", on_click=on_generate_ek_and_sk, disabled=not enabled),
-            ft.Button("4) Compute associated data (AD)", on_click=on_compute_ad, disabled=not enabled),
+            request_button,
+            verify_button,
+            generate_ek_button,
+            compute_ad_button,
         ],
         spacing=8,
     )
@@ -339,13 +381,26 @@ def _container(
     on_bob_receive,
     enabled: bool,
 ) -> ft.Control:
+    initial_message = state.get("initial_message")
     bob_result = state.get("bob_receive_result")
+    message_sent = isinstance(initial_message, dict)
+    verified = isinstance(bob_result, dict)
+
+    highlight_send = enabled and not message_sent
+    highlight_receive = enabled and message_sent and not verified
+
+    send_button = ft.Button(
+        "Send initial message",
+        on_click=on_send_initial_message,
+        disabled=not enabled,
+        style=ft.ButtonStyle(bgcolor=ft.Colors.ORANGE_300) if highlight_send else None,
+    )
 
     alice_panel = ft.Container(
         content=ft.Column(
             controls=[
                 ft.Text("Alice", weight=ft.FontWeight.BOLD),
-                ft.Button("Send initial message", on_click=on_send_initial_message, disabled=not enabled),
+                send_button,
             ],
             spacing=8,
         ),
@@ -357,7 +412,12 @@ def _container(
 
     bob_controls: list[ft.Control] = [
         ft.Text("Bob", weight=ft.FontWeight.BOLD),
-        ft.Button("Receive and verify", on_click=on_bob_receive, disabled=not enabled),
+        ft.Button(
+            "Receive and verify",
+            on_click=on_bob_receive,
+            disabled=not enabled,
+            style=ft.ButtonStyle(bgcolor=ft.Colors.ORANGE_300) if highlight_receive else None,
+        ),
     ]
 
     if isinstance(bob_result, dict):
