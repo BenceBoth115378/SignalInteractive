@@ -181,7 +181,6 @@ def VERIFY_WITH_IDENTITY_SIGNING_PUBLIC(identity_signing_public: str, message: b
         return False
 
 
-
 def SIGN(private_pem: str, message: bytes) -> str:
     private_key = ECC.import_key(private_pem)
     signer = eddsa.new(private_key, "rfc8032")
@@ -206,16 +205,11 @@ def KDF_SK(dh_values: list[bytes]) -> bytes:
 def CALC_AD(
     initiator_identity_public: str,
     responder_identity_public: str,
-    responder_signed_prekey_public: str,
-    initiator_ephemeral_public: str,
-    responder_opk_id: int | None,
 ) -> str:
+
     payload: dict[str, Any] = {
         "ik_a": initiator_identity_public,
         "ik_b": responder_identity_public,
-        "spk_b": responder_signed_prekey_public,
-        "ek_a": initiator_ephemeral_public,
-        "opk_id": responder_opk_id,
     }
     serialized = json.dumps(payload, sort_keys=True).encode("utf-8")
     return hashlib.sha256(serialized).hexdigest()

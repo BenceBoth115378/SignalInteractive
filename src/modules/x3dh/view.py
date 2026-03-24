@@ -19,7 +19,6 @@ def _short(value: str | None, length: int = 12) -> str:
     return value[-length:]
 
 
-
 def _build_tooltip_value(
     page: ft.Page | None,
     tooltips: dict[str, str],
@@ -82,7 +81,7 @@ def _build_party_summary(
 
     identity_pub = payload.get("identity_dh", {}).get("public")
     spk_pub = payload.get("signed_prekey", {}).get("public")
-    signing_pub = payload.get("identity_signing_public", "")
+    spk_signature = payload.get("signed_prekey_signature", "")
     opk_count = len(payload.get("opk_public_by_id", {}))
 
     return ft.Container(
@@ -92,11 +91,11 @@ def _build_party_summary(
                 _build_tooltip_value(page, tooltips, "IK_pub", identity_pub),
                 _build_tooltip_value(page, tooltips, "SPK_pub", spk_pub),
                 build_tooltip_text(
-                    "identity_signing_proof",
-                    "present" if signing_pub else "missing",
-                    tooltips.get("identity_signing_proof", ""),
-                    full_value=signing_pub or None,
-                    on_click=make_copy_handler(page, "identity_signing_proof", signing_pub) if page is not None and signing_pub else None,
+                    "SPK_signature",
+                    "present" if spk_signature else "missing",
+                    tooltips.get("SPK_signature", ""),
+                    full_value=spk_signature or None,
+                    on_click=make_copy_handler(page, "SPK signature", spk_signature) if page is not None and spk_signature else None,
                 ),
                 build_tooltip_text(
                     "local_opk_count",
@@ -189,11 +188,13 @@ def _phase1_container(
     on_alice_rotate_spk,
     alice_needs_to_upload_opk: bool = False,
 ) -> ft.Control:
+    alice_generated = bool(state.get("alice_generated", False))
     alice_registered = isinstance(state.get("server_state", {}).get("alice_bundle"), dict)
 
     upload_button = ft.Button(
-        "Alice uploads new OPK",
+        "Alice generates and uploads new OPK",
         on_click=on_alice_upload_new_opk,
+        disabled=(not alice_generated) or (not alice_registered),
     )
     if alice_needs_to_upload_opk:
         upload_button_container = ft.Container(
@@ -209,10 +210,10 @@ def _phase1_container(
         content=ft.Column(
             controls=[
                 ft.Text("Alice Actions", weight=ft.FontWeight.BOLD),
-                ft.Row([ft.Button("Generate Alice keys", on_click=on_generate_alice)]),
-                ft.Row([ft.Button("Upload initial bundle", on_click=on_upload_alice_bundle)]),
+                ft.Row([ft.Button("Generate Alice keys", on_click=on_generate_alice, disabled=alice_generated)]),
+                ft.Row([ft.Button("Upload initial bundle", on_click=on_upload_alice_bundle, disabled=(not alice_generated) or alice_registered)]),
                 ft.Row([upload_button_container], expand=True),
-                ft.Row([ft.Button("Alice uploads new signed prekey bundle", on_click=on_alice_rotate_spk)]),
+                ft.Row([ft.Button("Alice generates and uploads new SPK bundle", on_click=on_alice_rotate_spk, disabled=(not alice_generated) or (not alice_registered))]),
             ],
             spacing=8,
         ),
@@ -228,7 +229,7 @@ def _phase1_container(
                         "Send 1 Alice OPK to an another requester",
                         on_click=on_server_send_alice_opk,
                         expand=True,
-                        disabled=not alice_registered,
+                        disabled=(not alice_generated) or (not alice_registered),
                     )
                 ]),
                 ft.Row([ft.Button("Send 1 Bob OPK to an another requester", on_click=on_server_send_bob_opk, expand=True)]),
@@ -259,6 +260,7 @@ def _phase2_container(
     on_verify_signature,
     on_generate_ek_and_sk,
     on_compute_ad,
+    enabled: bool,
 ) -> ft.Control:
     bundle = state.get("last_bundle_for_alice")
     derived = state.get("alice_derived")
@@ -277,30 +279,30 @@ def _phase2_container(
 
     buttons = ft.Column(
         controls=[
-            ft.Button("1) Request Bob prekey bundle", on_click=on_request_bob_bundle),
-            ft.Button("2) Verify Bob signed prekey signature", on_click=on_verify_signature),
-            ft.Button("3) Generate EK and derive SK (3 or 4 DH)", on_click=on_generate_ek_and_sk),
-            ft.Button("4) Compute associated data (AD)", on_click=on_compute_ad),
+            ft.Button("1) Request Bob prekey bundle", on_click=on_request_bob_bundle, disabled=not enabled),
+            ft.Button("2) Verify Bob signed prekey signature", on_click=on_verify_signature, disabled=not enabled),
+            ft.Button("3) Generate EK and derive SK (3 or 4 DH)", on_click=on_generate_ek_and_sk, disabled=not enabled),
+            ft.Button("4) Compute associated data (AD)", on_click=on_compute_ad, disabled=not enabled),
         ],
         spacing=8,
     )
 
     texts = ft.Column(
         controls=[
-            build_tooltip_text("phase2_bob_bundle_status", bundle_status, tooltips.get("phase2_bob_bundle_status", "")),
+            build_tooltip_text("bob_bundle_status", bundle_status, tooltips.get("phase2_bob_bundle_status", "")),
             build_tooltip_text(
-                "phase2_shared_secret_preview",
+                "shared_secret_preview",
                 sk_preview,
                 tooltips.get("phase2_shared_secret_preview", ""),
                 full_value=derived.get("shared_secret") if isinstance(derived, dict) else None,
             ),
             build_tooltip_text(
-                "phase2_ad_preview",
+                "ad_preview",
                 ad_preview,
                 tooltips.get("phase2_ad_preview", ""),
                 full_value=derived.get("associated_data") if isinstance(derived, dict) else None,
             ),
-            build_tooltip_text("phase2_dh_count", dh_count, tooltips.get("phase2_dh_count", "")),
+            build_tooltip_text("dh_count", dh_count, tooltips.get("phase2_dh_count", "")),
         ],
         spacing=4,
     )
@@ -309,6 +311,10 @@ def _phase2_container(
         content=ft.Column(
             controls=[
                 ft.Text("2. Alice computes shared secret and AD", size=18, weight=ft.FontWeight.BOLD),
+                ft.Text(
+                    "Disabled until Phase 1 is complete." if not enabled else "",
+                    color=ft.Colors.ON_SURFACE_VARIANT,
+                ),
                 ft.Row([buttons,
                         ft.VerticalDivider(),
                         texts],
@@ -324,28 +330,22 @@ def _phase2_container(
     )
 
 
-def _phase3_container(
+def _container(
     state: dict[str, Any],
     page: ft.Page | None,
     tooltips: dict[str, str],
     phase2_message_input: ft.TextField,
     on_send_initial_message,
     on_bob_receive,
+    enabled: bool,
 ) -> ft.Control:
-    initial_message = state.get("initial_message")
     bob_result = state.get("bob_receive_result")
 
     alice_panel = ft.Container(
         content=ft.Column(
             controls=[
                 ft.Text("Alice", weight=ft.FontWeight.BOLD),
-                phase2_message_input,
-                ft.Button("Send initial message", on_click=on_send_initial_message),
-                build_tooltip_text(
-                    "phase3_message_status",
-                    "Message prepared" if isinstance(initial_message, dict) else "No initial message sent yet.",
-                    tooltips.get("phase3_message_status", ""),
-                ),
+                ft.Button("Send initial message", on_click=on_send_initial_message, disabled=not enabled),
             ],
             spacing=8,
         ),
@@ -357,31 +357,29 @@ def _phase3_container(
 
     bob_controls: list[ft.Control] = [
         ft.Text("Bob", weight=ft.FontWeight.BOLD),
-        ft.Button("Receive and verify", on_click=on_bob_receive),
+        ft.Button("Receive and verify", on_click=on_bob_receive, disabled=not enabled),
     ]
 
     if isinstance(bob_result, dict):
         bob_controls.extend(
             [
-                build_tooltip_text("phase3_ad_match", str(bob_result.get("ad_matches", False)), tooltips.get("phase3_ad_match", "")),
+                build_tooltip_text("ad_match", str(bob_result.get("ad_matches", False)), tooltips.get("ad_match", "")),
                 build_tooltip_text(
-                    "phase3_shared_secret_match",
+                    "shared_secret_match",
                     str(bob_result.get("shared_secret_matches", False)),
-                    tooltips.get("phase3_shared_secret_match", ""),
+                    tooltips.get("shared_secret_match", ""),
                 ),
-                build_tooltip_text("phase3_decryption_ok", str(bob_result.get("decryption_ok", False)), tooltips.get("phase3_decryption_ok", "")),
-                build_tooltip_text("phase3_dh_count", str(bob_result.get("dh_count", "-")), tooltips.get("phase3_dh_count", "")),
+                build_tooltip_text("decryption_ok", str(bob_result.get("decryption_ok", False)), tooltips.get("decryption_ok", "")),
+                build_tooltip_text("dh_count", str(bob_result.get("dh_count", "-")), tooltips.get("dh_count", "")),
                 build_tooltip_text(
-                    "phase3_decrypted_text",
+                    "decrypted_text",
                     _short(str(bob_result.get("decrypted_text", "-")), 24),
-                    tooltips.get("phase3_decrypted_text", ""),
+                    tooltips.get("decrypted_text", ""),
                     full_value=str(bob_result.get("decrypted_text", "-")),
-                    on_click=make_copy_handler(page, "phase3_decrypted_text", str(bob_result.get("decrypted_text", "-"))) if page is not None else None,
+                    on_click=make_copy_handler(page, "decrypted_text", str(bob_result.get("decrypted_text", "-"))) if page is not None else None,
                 ),
             ]
         )
-    else:
-        bob_controls.append(ft.Text("No verification run yet.", color=ft.Colors.ON_SURFACE_VARIANT))
 
     bob_panel = ft.Container(
         content=ft.Column(controls=bob_controls, spacing=8),
@@ -395,6 +393,10 @@ def _phase3_container(
         content=ft.Column(
             controls=[
                 ft.Text("3. Send initial message", size=18, weight=ft.FontWeight.BOLD),
+                ft.Text(
+                    "Disabled until Phase 2 is complete." if not enabled else "",
+                    color=ft.Colors.ON_SURFACE_VARIANT,
+                ),
                 ft.Row([alice_panel, bob_panel], expand=True, vertical_alignment=ft.CrossAxisAlignment.START),
             ],
             spacing=8,
@@ -409,6 +411,7 @@ def build_visual(
     state: dict[str, Any],
     page: ft.Page,
     status_text: ft.Text,
+    step_visualization_checkbox: ft.Checkbox,
     phase2_message_input: ft.TextField,
     on_generate_alice,
     on_upload_alice_bundle,
@@ -432,7 +435,13 @@ def build_visual(
         ft.Row(
             controls=[
                 ft.Text("X3DH Model", size=26, weight=ft.FontWeight.BOLD),
-                ft.TextButton("Reset application", on_click=on_reset_application),
+                ft.Row(
+                    controls=[
+                        step_visualization_checkbox,
+                        ft.TextButton("Reset application", on_click=on_reset_application),
+                    ],
+                    spacing=10,
+                ),
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -458,43 +467,29 @@ def build_visual(
         ),
     ]
 
-    if is_phase1_done:
-        phase_controls.append(
-            _phase2_container(
-                state,
-                tooltips,
-                on_request_bob_bundle,
-                on_verify_signature,
-                on_generate_ek_and_sk,
-                on_compute_ad,
-            )
+    phase_controls.append(
+        _phase2_container(
+            state,
+            tooltips,
+            on_request_bob_bundle,
+            on_verify_signature,
+            on_generate_ek_and_sk,
+            on_compute_ad,
+            enabled=is_phase1_done,
         )
-    else:
-        phase_controls.append(
-            ft.Text(
-                "Complete Phase 1 by uploading Alice initial bundle to reveal Phase 2. (When OPK count drops below 3, Alice will be prompted to upload new OPKs)",
-                color=ft.Colors.ON_SURFACE_VARIANT,
-            )
-        )
+    )
 
-    if is_phase2_done:
-        phase_controls.append(
-            _phase3_container(
-                state,
-                page,
-                tooltips,
-                phase2_message_input,
-                on_send_initial_message,
-                on_bob_receive,
-            )
+    phase_controls.append(
+        _container(
+            state,
+            page,
+            tooltips,
+            phase2_message_input,
+            on_send_initial_message,
+            on_bob_receive,
+            enabled=is_phase2_done,
         )
-    elif is_phase1_done:
-        phase_controls.append(
-            ft.Text(
-                "Complete Phase 2 by computing AD to reveal Phase 3.",
-                color=ft.Colors.ON_SURFACE_VARIANT,
-            )
-        )
+    )
 
     left_panel = ft.Column(
         controls=phase_controls,

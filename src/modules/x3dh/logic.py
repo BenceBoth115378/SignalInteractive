@@ -54,7 +54,6 @@ def bootstrap_bob_to_server(state: X3DHState) -> None:
 
     bob_identity = _generate_dh_key_pair()
     bob_signed_prekey = _generate_dh_key_pair()
-    identity_signing_public = ext.IDENTITY_SIGNING_PUBLIC_FROM_DH_PRIVATE(bob_identity["private"])
     signature = ext.SIGN_WITH_IDENTITY_DH_PRIVATE(bob_identity["private"], bytes.fromhex(bob_signed_prekey["public"]))
 
     opk_private_by_id: dict[str, dict[str, str]] = {}
@@ -67,7 +66,6 @@ def bootstrap_bob_to_server(state: X3DHState) -> None:
     state.bob_local = {
         "name": "Bob",
         "identity_dh": bob_identity,
-        "identity_signing_public": identity_signing_public,
         "signed_prekey": bob_signed_prekey,
         "signed_prekey_signature": signature,
         "opk_private_by_id": opk_private_by_id,
@@ -77,7 +75,6 @@ def bootstrap_bob_to_server(state: X3DHState) -> None:
 
     server_state["bob_bundle"] = {
         "identity_dh_public": bob_identity["public"],
-        "identity_signing_public": identity_signing_public,
         "signed_prekey_public": bob_signed_prekey["public"],
         "signed_prekey_signature": signature,
     }
@@ -107,7 +104,6 @@ def new_state() -> X3DHState:
 def generate_alice_registration_material(state: X3DHState) -> None:
     identity = _generate_dh_key_pair()
     signed_prekey = _generate_dh_key_pair()
-    identity_signing_public = ext.IDENTITY_SIGNING_PUBLIC_FROM_DH_PRIVATE(identity["private"])
     signature = ext.SIGN_WITH_IDENTITY_DH_PRIVATE(identity["private"], bytes.fromhex(signed_prekey["public"]))
 
     opk_private_by_id: dict[str, dict[str, str]] = {}
@@ -120,7 +116,6 @@ def generate_alice_registration_material(state: X3DHState) -> None:
     state.alice_local = {
         "name": "Alice",
         "identity_dh": identity,
-        "identity_signing_public": identity_signing_public,
         "signed_prekey": signed_prekey,
         "signed_prekey_signature": signature,
         "opk_private_by_id": opk_private_by_id,
@@ -143,7 +138,6 @@ def upload_alice_initial_bundle(state: X3DHState) -> None:
     server_state = _ensure_server_state(state)
     server_state["alice_bundle"] = {
         "identity_dh_public": alice["identity_dh"]["public"],
-        "identity_signing_public": alice["identity_signing_public"],
         "signed_prekey_public": alice["signed_prekey"]["public"],
         "signed_prekey_signature": alice["signed_prekey_signature"],
     }
@@ -216,7 +210,6 @@ def alice_rotates_signed_prekey_bundle(state: X3DHState) -> None:
 
     server_state["alice_bundle"] = {
         "identity_dh_public": alice["identity_dh"]["public"],
-        "identity_signing_public": alice["identity_signing_public"],
         "signed_prekey_public": new_spk["public"],
         "signed_prekey_signature": new_signature,
     }
@@ -239,7 +232,6 @@ def request_bob_bundle_for_alice(state: X3DHState) -> None:
 
     state.last_bundle_for_alice = {
         "identity_dh_public": bob_bundle["identity_dh_public"],
-        "identity_signing_public": bob_bundle["identity_signing_public"],
         "signed_prekey_public": bob_bundle["signed_prekey_public"],
         "signed_prekey_signature": bob_bundle["signed_prekey_signature"],
         "opk_id": opk_id,
@@ -260,8 +252,17 @@ def alice_verifies_bundle_signature(state: X3DHState) -> None:
     if not isinstance(bundle, dict):
         raise ValueError("Alice must request Bob prekey bundle first.")
 
+    bob = ensure_bob_local(state)
+    bob_identity = bob.get("identity_dh") if isinstance(bob.get("identity_dh"), dict) else None
+    if not isinstance(bob_identity, dict):
+        raise ValueError("Bob local identity key is missing.")
+    verify_public = ext.IDENTITY_SIGNING_PUBLIC_FROM_DH_PRIVATE(bob_identity["private"])
+
+    if bundle.get("identity_dh_public") != bob_identity.get("public"):
+        raise ValueError("Bundle IK_pub does not match Bob identity key.")
+
     ok = ext.VERIFY_WITH_IDENTITY_SIGNING_PUBLIC(
-        bundle["identity_signing_public"],
+        verify_public,
         bytes.fromhex(bundle["signed_prekey_public"]),
         bundle["signed_prekey_signature"],
     )
@@ -316,9 +317,6 @@ def alice_calculates_associated_data(state: X3DHState) -> None:
     associated_data = ext.CALC_AD(
         initiator_identity_public=alice["identity_dh"]["public"],
         responder_identity_public=bundle["identity_dh_public"],
-        responder_signed_prekey_public=bundle["signed_prekey_public"],
-        initiator_ephemeral_public=derived["ek_public"],
-        responder_opk_id=bundle.get("opk_id"),
     )
 
     derived["associated_data"] = associated_data
@@ -337,27 +335,38 @@ def alice_sends_initial_message(state: X3DHState, plaintext: str) -> None:
     if not isinstance(shared_secret, str) or not isinstance(associated_data, str):
         raise ValueError("SK and AD must be available before sending.")
 
-    text = plaintext.strip() or "Hello Bob from Alice using X3DH"
+    _ = plaintext
+
+    # This model sends no user plaintext: payload is AD bytes encrypted under SK.
+    # AD is not used as AEAD associated data here; it is only the plaintext payload.
+    payload = bytes.fromhex(associated_data)
     ciphertext = ext.ENCRYPT(
         bytes.fromhex(shared_secret),
-        text.encode("utf-8"),
-        bytes.fromhex(associated_data),
+        payload,
+        b"",
     ).hex()
 
-    state.initial_message = {
-        "from": "Alice",
-        "to": "Bob",
+    header = {
         "ik_a_public": alice["identity_dh"]["public"],
         "ek_a_public": derived["ek_public"],
         "bob_spk_public": bundle["signed_prekey_public"],
         "bob_opk_id": bundle.get("opk_id"),
-        "associated_data": associated_data,
+    }
+
+    state.initial_message = {
+        "from": "Alice",
+        "to": "Bob",
+        "header": header,
+        # Backward compatibility for readers still using top-level fields.
+        "ik_a_public": header["ik_a_public"],
+        "ek_a_public": header["ek_a_public"],
+        "bob_spk_public": header["bob_spk_public"],
+        "bob_opk_id": header["bob_opk_id"],
         "ciphertext": ciphertext,
-        "plaintext_preview": text,
     }
 
     state.bob_receive_result = None
-    add_event(state, "Alice sent initial X3DH message to Bob.")
+    add_event(state, "Alice sent initial X3DH message to Bob (encrypted AD payload).")
 
 
 def bob_receives_and_verifies(state: X3DHState) -> None:
@@ -366,43 +375,53 @@ def bob_receives_and_verifies(state: X3DHState) -> None:
     if not isinstance(msg, dict):
         raise ValueError("No initial message to process.")
 
+    header = msg.get("header") if isinstance(msg.get("header"), dict) else {}
+    ik_a_public = header.get("ik_a_public", msg.get("ik_a_public"))
+    ek_a_public = header.get("ek_a_public", msg.get("ek_a_public"))
+    bob_spk_public = header.get("bob_spk_public", msg.get("bob_spk_public"))
+
+    if not all(isinstance(value, str) and value for value in [ik_a_public, ek_a_public, bob_spk_public]):
+        raise ValueError("Initial message header is incomplete.")
+
+    if bob.get("signed_prekey", {}).get("public") != bob_spk_public:
+        raise ValueError("Message header SPK does not match Bob's current SPK.")
+
     dh_values = [
-        ext.DH(bob["signed_prekey"], msg["ik_a_public"]),
-        ext.DH(bob["identity_dh"], msg["ek_a_public"]),
-        ext.DH(bob["signed_prekey"], msg["ek_a_public"]),
+        ext.DH(bob["signed_prekey"], ik_a_public),
+        ext.DH(bob["identity_dh"], ek_a_public),
+        ext.DH(bob["signed_prekey"], ek_a_public),
     ]
 
-    opk_id = msg.get("bob_opk_id")
+    # Bob determines whether OPK was used from the included bob_opk_id in Alice's message header.
+    opk_id = header.get("bob_opk_id", msg.get("bob_opk_id"))
     if opk_id is not None:
         opk_private_entry = bob.get("opk_private_by_id", {}).pop(str(opk_id), None)
         if not isinstance(opk_private_entry, dict):
             raise ValueError("Expected Bob OPK was already consumed or missing.")
-        dh_values.append(ext.DH(opk_private_entry, msg["ek_a_public"]))
+        dh_values.append(ext.DH(opk_private_entry, ek_a_public))
 
     bob_sk = ext.KDF_SK(dh_values)
     bob_associated_data = ext.CALC_AD(
-        initiator_identity_public=msg["ik_a_public"],
+        initiator_identity_public=ik_a_public,
         responder_identity_public=bob["identity_dh"]["public"],
-        responder_signed_prekey_public=bob["signed_prekey"]["public"],
-        initiator_ephemeral_public=msg["ek_a_public"],
-        responder_opk_id=opk_id,
     )
-
-    received_associated_data = msg.get("associated_data")
-    ad_matches = bob_associated_data == received_associated_data
 
     decrypted_text = ""
     decrypt_ok = False
-    if ad_matches:
-        try:
-            decrypted_text = ext.DECRYPT(
-                bob_sk,
-                bytes.fromhex(msg["ciphertext"]),
-                bytes.fromhex(bob_associated_data),
-            ).decode("utf-8", errors="replace")
-            decrypt_ok = True
-        except Exception as exc:
-            decrypted_text = f"Decryption failed: {exc}"
+    payload_matches_ad = False
+    try:
+        decrypted_bytes = ext.DECRYPT(
+            bob_sk,
+            bytes.fromhex(msg["ciphertext"]),
+            b"",
+        )
+        decrypted_text = decrypted_bytes.hex()
+        decrypt_ok = True
+        payload_matches_ad = decrypted_text == bob_associated_data
+    except Exception as exc:
+        decrypted_text = f"Decryption failed: {exc}"
+
+    ad_matches = payload_matches_ad
 
     alice_derived = state.alice_derived
     shared_secret_match = False
@@ -410,9 +429,10 @@ def bob_receives_and_verifies(state: X3DHState) -> None:
         shared_secret_match = alice_derived.get("shared_secret") == bob_sk.hex()
 
     state.bob_receive_result = {
+        "used_opk_id": opk_id,
         "ad_local": bob_associated_data,
-        "ad_received": received_associated_data,
         "ad_matches": ad_matches,
+        "payload_matches_ad": payload_matches_ad,
         "bob_shared_secret": bob_sk.hex(),
         "shared_secret_matches": shared_secret_match,
         "decryption_ok": decrypt_ok,

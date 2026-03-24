@@ -23,6 +23,7 @@ from modules.x3dh.logic import (
     server_sends_bob_opk_to_requester,
     upload_alice_initial_bundle,
 )
+from modules.x3dh.step_visualization import show_x3dh_action_step_visualization_dialog
 from modules.x3dh.view import build_visual
 
 
@@ -115,7 +116,8 @@ class X3DHModule(BaseModule):
 
     def build(self, page, app_state, perspective_selector: ft.Control | None = None):
         status_text = ft.Text("", size=13, color=ft.Colors.BLUE)
-        phase2_message_input = ft.TextField(label="Initial plaintext", value="Hello Bob from Alice using X3DH", dense=True)
+        show_step_visualization_checkbox = ft.Checkbox(label="Show step-by-step visualization", value=True)
+        phase2_message_input = ft.TextField(label="Payload", value="", dense=True)
         visual_container = ft.Container(expand=True)
 
         _ = app_state
@@ -125,54 +127,120 @@ class X3DHModule(BaseModule):
             status_text.value = message
             status_text.color = ft.Colors.RED if is_error else ft.Colors.BLUE
 
-        def _run(action: callable, success: str):
+        def _run(
+            action: callable,
+            success: str,
+            action_name: str,
+            action_context: dict | None = None,
+            show_step_visualization: bool = True,
+        ):
+            before_state = self._state_data()
             try:
                 action()
                 _set_status(success, is_error=False)
             except Exception as exc:
                 _set_status(str(exc), is_error=True)
+                refresh()
+                page.update()
+                return
+
+            after_state = self._state_data()
             refresh()
             page.update()
 
+            if show_step_visualization and show_step_visualization_checkbox.value:
+                show_x3dh_action_step_visualization_dialog(
+                    page,
+                    action_name=action_name,
+                    before_state=before_state,
+                    after_state=after_state,
+                    action_context=action_context or {},
+                )
+
         def on_generate_alice(e):
-            _run(self._generate_alice_registration_material, "Alice registration material generated.")
+            _run(
+                self._generate_alice_registration_material,
+                "Alice registration material generated.",
+                "generate_alice_registration_material",
+            )
 
         def on_upload_alice_bundle(e):
-            _run(self._upload_alice_initial_bundle, "Alice initial bundle uploaded to server.")
+            _run(
+                self._upload_alice_initial_bundle,
+                "Alice initial bundle uploaded to server.",
+                "upload_alice_initial_bundle",
+            )
 
         def on_server_send_alice_opk(e):
-            _run(self._server_sends_alice_opk_to_requester, "Server sent one Alice OPK to requester.")
+            _run(
+                self._server_sends_alice_opk_to_requester,
+                "Server sent one Alice OPK to requester.",
+                "server_sends_alice_opk_to_requester",
+            )
 
         def on_server_send_bob_opk(e):
-            _run(self._server_sends_bob_opk_to_requester, "Server sent one Bob OPK to requester.")
+            _run(
+                self._server_sends_bob_opk_to_requester,
+                "Server sent one Bob OPK to requester.",
+                "server_sends_bob_opk_to_requester",
+            )
 
         def on_alice_upload_new_opk(e):
-            _run(self._alice_uploads_new_opk, "Alice uploaded a new OPK.")
+            _run(self._alice_uploads_new_opk, "Alice uploaded a new OPK.", "alice_uploads_new_opk")
 
         def on_alice_rotate_spk(e):
-            _run(self._alice_rotates_signed_prekey_bundle, "Alice uploaded a new signed prekey bundle.")
+            _run(
+                self._alice_rotates_signed_prekey_bundle,
+                "Alice uploaded a new signed prekey bundle.",
+                "alice_rotates_signed_prekey_bundle",
+            )
 
         def on_request_bob_bundle(e):
-            _run(self._request_bob_bundle_for_alice, "Alice requested Bob prekey bundle from server.")
+            _run(
+                self._request_bob_bundle_for_alice,
+                "Alice requested Bob prekey bundle from server.",
+                "request_bob_bundle_for_alice",
+            )
 
         def on_verify_signature(e):
-            _run(self._alice_verifies_bundle_signature, "Alice verified Bob signed prekey signature.")
+            _run(
+                self._alice_verifies_bundle_signature,
+                "Alice verified Bob signed prekey signature.",
+                "alice_verifies_bundle_signature",
+            )
 
         def on_generate_ek_and_sk(e):
-            _run(self._alice_generates_ek_and_derives_sk, "Alice generated EK and derived SK.")
+            _run(
+                self._alice_generates_ek_and_derives_sk,
+                "Alice generated EK and derived SK.",
+                "alice_generates_ek_and_derives_sk",
+            )
 
         def on_compute_ad(e):
-            _run(self._alice_calculates_associated_data, "Alice computed AD.")
+            _run(self._alice_calculates_associated_data, "Alice computed AD.", "alice_calculates_associated_data")
 
         def on_send_initial_message(e):
-            _run(lambda: self._alice_sends_initial_message(phase2_message_input.value), "Alice sent initial X3DH message.")
+            _run(
+                lambda: self._alice_sends_initial_message(phase2_message_input.value),
+                "Alice sent initial X3DH message.",
+                "alice_sends_initial_message",
+            )
 
         def on_bob_receive(e):
-            _run(self._bob_receives_and_verifies, "Bob processed initial message and checked AD/SK.")
+            _run(
+                self._bob_receives_and_verifies,
+                "Bob processed initial message and checked AD/SK.",
+                "bob_receives_and_verifies",
+            )
 
         def on_reset_application(e):
-            phase2_message_input.value = "Hello Bob from Alice using X3DH"
-            _run(self._reset_application, "X3DH application reset.")
+            phase2_message_input.value = ""
+            _run(
+                self._reset_application,
+                "X3DH application reset.",
+                "reset_application",
+                show_step_visualization=False,
+            )
 
         def refresh() -> None:
             state_data = self._state_data()
@@ -180,6 +248,7 @@ class X3DHModule(BaseModule):
                 state_data,
                 page,
                 status_text,
+                show_step_visualization_checkbox,
                 phase2_message_input,
                 on_generate_alice,
                 on_upload_alice_bundle,
