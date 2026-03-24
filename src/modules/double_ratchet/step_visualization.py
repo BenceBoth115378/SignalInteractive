@@ -873,7 +873,7 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
             ),
             ft.Text("↓", size=24),
             flow_node("Shared secret (SS)", ss_kdf_rk1, width=200, height=70, tooltip=tooltips.get("step_viz_shared_secret", ""), full_value=ss_kdf_rk1_full),
-            ft.Text("↓", size=24),
+            ft.Text("", size=24),
             ft.Row(
                 controls=[
                     flow_node("RK", before_rk, tooltip=tooltips.get("step_viz_receive_before_rk", ""), full_value=before_rk_full, width=170, height=90),
@@ -882,7 +882,7 @@ def show_receiving_step_visualization_dialog(page: ft.Page, step_data: ReceiveSt
                 alignment=ft.MainAxisAlignment.CENTER,
                 spacing=16,
             ),
-            ft.Text("", size=24),
+            ft.Text("↓", size=24),
             flow_node(
                 "KDF_RK #1",
                 width=200,
