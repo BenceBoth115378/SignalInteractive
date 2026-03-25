@@ -22,6 +22,16 @@ def initialize_session(session: DoubleRatchetState) -> None:
     RatchetInitBob(session.responder, shared_secret, bob_dh_key_pair)
 
 
+def initialize_session_from_x3dh(
+    session: DoubleRatchetState,
+    shared_secret: bytes,
+    bob_spk_key_pair: DHKeyPair,
+) -> None:
+
+    RatchetInitAlice(session.initializer, shared_secret, bob_spk_key_pair.public)
+    RatchetInitBob(session.responder, shared_secret, bob_spk_key_pair)
+
+
 def RatchetInitAlice(state: PartyState, SK: bytes, bob_dh_public_key: str) -> None:
     state.DHs = ext.GENERATE_DH()
     state.DHr = bob_dh_public_key

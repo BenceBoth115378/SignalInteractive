@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import json
 
 import flet as ft
 
@@ -113,6 +114,34 @@ class X3DHModule(BaseModule):
 
     def _is_phase2_done(self) -> bool:
         return is_phase2_done(self.state)
+
+    def _build_dr_bootstrap_payload(self) -> dict | None:
+        derived = self.state.alice_derived if isinstance(self.state.alice_derived, dict) else None
+        bob_local = self.state.bob_local if isinstance(self.state.bob_local, dict) else None
+        bob_spk = (bob_local or {}).get("signed_prekey") if isinstance((bob_local or {}).get("signed_prekey"), dict) else None
+
+        if not isinstance(derived, dict) or not isinstance(bob_spk, dict):
+            return None
+
+        sk_hex = derived.get("shared_secret")
+        ad_hex = derived.get("associated_data")
+        bob_spk_public = bob_spk.get("public")
+        bob_spk_private = bob_spk.get("private")
+
+        if not all(isinstance(value, str) and value for value in [sk_hex, ad_hex, bob_spk_public, bob_spk_private]):
+            return None
+
+        initial_message = self.state.initial_message if isinstance(self.state.initial_message, dict) else None
+        initial_message_json = json.dumps(initial_message, sort_keys=True) if isinstance(initial_message, dict) else ""
+
+        return {
+            "source": "x3dh",
+            "sk_hex": sk_hex,
+            "ad_hex": ad_hex,
+            "bob_spk_public": bob_spk_public,
+            "bob_spk_private": bob_spk_private,
+            "initial_message_json": initial_message_json,
+        }
 
     def build(self, page, app_state, perspective_selector: ft.Control | None = None):
         status_text = ft.Text("", size=13, color=ft.Colors.BLUE)
@@ -244,6 +273,7 @@ class X3DHModule(BaseModule):
 
         def refresh() -> None:
             state_data = self._state_data()
+            app_state.x3dh_to_dr_bootstrap = self._build_dr_bootstrap_payload()
             visual_container.content = build_visual(
                 state_data,
                 page,

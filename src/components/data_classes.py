@@ -10,6 +10,7 @@ Perspective = Literal["global", "alice", "bob", "attacker"]
 class AppState:
     current_module: str = ""
     perspective: Perspective = "global"
+    x3dh_to_dr_bootstrap: dict | None = None
 
 
 @dataclass

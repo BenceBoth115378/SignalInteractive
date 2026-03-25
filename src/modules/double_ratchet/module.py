@@ -3,6 +3,7 @@ from dataclasses import asdict
 from typing import Any
 
 from components.data_classes import (
+    DHKeyPair,
     DoubleRatchetState,
     Header,
     MessageState,
@@ -12,12 +13,25 @@ from components.data_classes import (
 )
 from modules.base_module import BaseModule
 from modules.double_ratchet.logic import (
+    RatchetInitBob,
     RatchetEncrypt,
     RatchetReceiveKey,
-    initialize_session,
+    initialize_session_from_x3dh,
 )
 from modules import external as ext
+from modules.x3dh.logic import (
+    alice_calculates_associated_data,
+    alice_generates_ek_and_derives_sk,
+    alice_sends_initial_message,
+    alice_verifies_bundle_signature,
+    generate_alice_registration_material,
+    new_state as new_x3dh_state,
+    request_bob_bundle_for_alice,
+    upload_alice_initial_bundle,
+)
 from modules.double_ratchet.step_visualization import (
+    show_alice_x3dh_bootstrap_visualization_dialog,
+    show_bob_x3dh_bootstrap_visualization_dialog,
     show_receiving_step_visualization_dialog,
     show_sending_step_visualization_dialog,
 )
@@ -153,8 +167,15 @@ class DoubleRatchetModule(BaseModule):
         self._receive_snapshots: dict[int, ReceiveStepVisualizationSnapshot] = {}
         self._attacker_compromised_secrets: dict[str, dict[str, Any]] = {}
         self._initial_warning_shown = False
-        initialize_session(self.session)
-        initialize_key_history(self.session)
+        self._session_ad: bytes = b""
+        self._x3dh_initial_header: dict[str, Any] | None = None
+        self._x3dh_bob_spk_pair: DHKeyPair | None = None
+        self._x3dh_shared_secret: bytes | None = None
+        self._x3dh_state_data: dict[str, Any] | None = None
+        self._x3dh_bob_initialized: bool = False
+        self._pending_show_alice_x3dh_bootstrap: bool = True
+        self._last_bob_bootstrap_info: dict[str, Any] | None = None
+        self._reset_session_with_initializer("alice")
 
     def export_state(self) -> dict:
         return {
@@ -176,9 +197,17 @@ class DoubleRatchetModule(BaseModule):
                     },
                     "cipher": _encode_bytes(pending["cipher"]),
                     "plaintext": _encode_bytes(pending.get("plaintext", b"")),
+                    "x3dh_header": pending.get("x3dh_header"),
                 }
                 for pending in self.pending_messages
             ],
+            "session_ad": _encode_bytes(self._session_ad),
+            "x3dh_initial_header": self._x3dh_initial_header,
+            "x3dh_bob_spk_pair": asdict(self._x3dh_bob_spk_pair) if self._x3dh_bob_spk_pair is not None else None,
+            "x3dh_shared_secret": _encode_bytes(self._x3dh_shared_secret),
+            "x3dh_state_data": self._x3dh_state_data,
+            "x3dh_bob_initialized": self._x3dh_bob_initialized,
+            "pending_show_alice_x3dh_bootstrap": self._pending_show_alice_x3dh_bootstrap,
         }
 
     def import_state(self, data: dict) -> None:
@@ -228,12 +257,36 @@ class DoubleRatchetModule(BaseModule):
                     "header": Header(dh=header_dh, pn=header_pn, n=header_n),
                     "cipher": _decode_bytes(pending.get("cipher")),
                     "plaintext": _decode_bytes(pending.get("plaintext", b"")),
+                    "x3dh_header": pending.get("x3dh_header") if isinstance(pending.get("x3dh_header"), dict) else None,
                 }
             )
+
+        self._session_ad = _decode_bytes(data.get("session_ad", b"")) or b""
+        self._x3dh_initial_header = data.get("x3dh_initial_header") if isinstance(data.get("x3dh_initial_header"), dict) else None
+        bob_spk_pair_data = data.get("x3dh_bob_spk_pair")
+        if isinstance(bob_spk_pair_data, dict):
+            private = bob_spk_pair_data.get("private")
+            public = bob_spk_pair_data.get("public")
+            if isinstance(private, str) and isinstance(public, str) and private and public:
+                self._x3dh_bob_spk_pair = DHKeyPair(private=private, public=public)
+            else:
+                self._x3dh_bob_spk_pair = None
+        else:
+            self._x3dh_bob_spk_pair = None
+        self._x3dh_shared_secret = _decode_bytes(data.get("x3dh_shared_secret"))
+        if self._x3dh_shared_secret == b"":
+            self._x3dh_shared_secret = None
+        self._x3dh_state_data = data.get("x3dh_state_data") if isinstance(data.get("x3dh_state_data"), dict) else None
+        self._x3dh_bob_initialized = bool(data.get("x3dh_bob_initialized", False))
+        self._pending_show_alice_x3dh_bootstrap = bool(data.get("pending_show_alice_x3dh_bootstrap", True))
+        self._last_bob_bootstrap_info = None
 
         max_log_seq_id = max((msg.seq_id for msg in self.session.message_log), default=0)
         max_pending_seq_id = max((item["id"] for item in self.pending_messages), default=0)
         self._next_pending_id = max(max_log_seq_id, max_pending_seq_id) + 1
+
+        if self._x3dh_shared_secret is None or self._x3dh_bob_spk_pair is None:
+            self._reset_session_with_initializer("alice")
 
     def _build_hint_message(self, sender: str) -> str:
         sender_key = sender.lower()
@@ -254,12 +307,41 @@ class DoubleRatchetModule(BaseModule):
         raise ValueError(f"Unknown party: {name}")
 
     def _reset_session_with_initializer(self, initializer_name: str) -> None:
-        if initializer_name.lower() == "bob":
-            initializer = PartyState("Bob")
-            responder = PartyState("Alice")
-        else:
-            initializer = PartyState("Alice")
-            responder = PartyState("Bob")
+        _ = initializer_name
+        initializer = PartyState("Alice")
+        responder = PartyState("Bob")
+
+        x3dh_state = new_x3dh_state()
+        generate_alice_registration_material(x3dh_state)
+        upload_alice_initial_bundle(x3dh_state)
+        request_bob_bundle_for_alice(x3dh_state)
+        alice_verifies_bundle_signature(x3dh_state)
+        alice_generates_ek_and_derives_sk(x3dh_state)
+        alice_calculates_associated_data(x3dh_state)
+        alice_sends_initial_message(x3dh_state, "")
+
+        derived = x3dh_state.alice_derived if isinstance(x3dh_state.alice_derived, dict) else None
+        initial_message = x3dh_state.initial_message if isinstance(x3dh_state.initial_message, dict) else None
+        x3dh_header = initial_message.get("header") if isinstance(initial_message, dict) and isinstance(initial_message.get("header"), dict) else None
+        bob_local = x3dh_state.bob_local if isinstance(x3dh_state.bob_local, dict) else None
+        bob_spk = bob_local.get("signed_prekey") if isinstance(bob_local, dict) and isinstance(bob_local.get("signed_prekey"), dict) else None
+
+        if not isinstance(derived, dict) or not isinstance(x3dh_header, dict) or not isinstance(bob_spk, dict):
+            raise ValueError("Could not initialize Double Ratchet because X3DH bootstrap is incomplete.")
+
+        shared_secret_hex = derived.get("shared_secret")
+        associated_data_hex = derived.get("associated_data")
+        bob_spk_public = bob_spk.get("public")
+        bob_spk_private = bob_spk.get("private")
+        if not all(
+            isinstance(value, str) and value
+            for value in [shared_secret_hex, associated_data_hex, bob_spk_public, bob_spk_private]
+        ):
+            raise ValueError("Could not initialize Double Ratchet because X3DH output values are invalid.")
+
+        shared_secret = bytes.fromhex(shared_secret_hex)
+        associated_data = bytes.fromhex(associated_data_hex)
+        bob_spk_pair = DHKeyPair(private=bob_spk_private, public=bob_spk_public)
 
         self.session = DoubleRatchetState(
             initializer=initializer,
@@ -270,27 +352,53 @@ class DoubleRatchetModule(BaseModule):
         self._next_pending_id = 1
         self._send_snapshots = {}
         self._receive_snapshots = {}
-        initialize_session(self.session)
+        initialize_session_from_x3dh(self.session, shared_secret, bob_spk_pair)
+
+        bob_state = self._get_party("bob")
+        bob_state.DHs = None
+        bob_state.DHr = None
+        bob_state.RK = b""
+        bob_state.CKs = None
+        bob_state.CKr = None
+        bob_state.Ns = 0
+        bob_state.Nr = 0
+        bob_state.PN = 0
+        bob_state.MKSKIPPED = {}
+
+        self._session_ad = associated_data
+        self._x3dh_initial_header = x3dh_header
+        self._x3dh_bob_spk_pair = bob_spk_pair
+        self._x3dh_shared_secret = shared_secret
+        self._x3dh_state_data = asdict(x3dh_state)
+        self._x3dh_bob_initialized = False
+        self._pending_show_alice_x3dh_bootstrap = True
+        self._last_bob_bootstrap_info = None
         initialize_key_history(self.session)
+
+    def _complete_bob_x3dh_bootstrap_from_header(self, x3dh_header: dict[str, Any]) -> None:
+        if self._x3dh_bob_initialized:
+            return
+
+        if self._x3dh_bob_spk_pair is None or self._x3dh_shared_secret is None:
+            raise ValueError("Bob cannot complete X3DH bootstrap because required state is missing.")
+
+        expected_spk_public = self._x3dh_bob_spk_pair.public
+        header_spk_public = x3dh_header.get("bob_spk_public")
+        if not isinstance(header_spk_public, str) or header_spk_public != expected_spk_public:
+            raise ValueError("X3DH header does not match Bob signed prekey.")
+
+        bob_state = self._get_party("bob")
+        RatchetInitBob(bob_state, self._x3dh_shared_secret, self._x3dh_bob_spk_pair)
+        self._x3dh_bob_initialized = True
+        self._last_bob_bootstrap_info = {"x3dh_header": x3dh_header}
 
     def _build_initializer_switch_warning(self, old_initializer: str, new_initializer: str) -> str:
         template = f"Session initializer switched from {old_initializer} to {new_initializer}.\n" if old_initializer and new_initializer else ""
-        assumption = "This simulation now assumes both parties (at least the sender) already know each other's public DH key and share an initial secret."
+        assumption = "Double Ratchet now always starts from a fresh X3DH run; Bob completes X3DH bootstrap on first receive."
         return template + assumption
 
     def _initializer_sent_count(self) -> int:
-        initializer_name = self.session.initializer.name
-        delivered_count = sum(
-            1
-            for message in self.session.message_log
-            if message.sender == initializer_name
-        )
-        pending_count = sum(
-            1
-            for pending in self.pending_messages
-            if pending.get("sender") == initializer_name
-        )
-        return delivered_count + pending_count
+        return len(self.session.message_log) + len(self.pending_messages)
 
     def _snapshot_party_state(self, state: PartyState) -> PartyStateSnapshot:
         return PartyStateSnapshot(
@@ -319,6 +427,12 @@ class DoubleRatchetModule(BaseModule):
         if pending is None:
             return None
 
+        if recipient_name == "Bob" and not self._x3dh_bob_initialized:
+            x3dh_header = pending.get("x3dh_header")
+            if not isinstance(x3dh_header, dict):
+                raise ValueError("Bob cannot receive the first message because X3DH header is missing.")
+            self._complete_bob_x3dh_bootstrap_from_header(x3dh_header)
+
         receiver_state = self._get_party(recipient_name)
         before_snapshot = self._snapshot_party_state(receiver_state)
         header = pending["header"]
@@ -337,7 +451,7 @@ class DoubleRatchetModule(BaseModule):
             fast_forward_count = max(0, header.n - before_snapshot.Nr)
             fast_forward_from_nr = before_snapshot.Nr
             fast_forward_to_nr = before_snapshot.Nr + fast_forward_count
-        associated_data = b""
+        associated_data = self._session_ad
         receive_trace: dict[str, Any] = {}
         mk = RatchetReceiveKey(receiver_state, header, trace=receive_trace)
         decrypted = ext.DECRYPT(mk, cipher, ext.CONCAT(associated_data, header))
@@ -403,34 +517,23 @@ class DoubleRatchetModule(BaseModule):
         if not text_to_send:
             return None
 
-        initializer_before = self.session.initializer.name
-        initializer_switch_warning: str | None = None
-
-        if not self.session.message_log and not self.pending_messages and sender_key == "bob":
-            self._reset_session_with_initializer("bob")
-            initializer_after = self.session.initializer.name
-            if initializer_after != initializer_before:
-                initializer_switch_warning = self._build_initializer_switch_warning(initializer_before, initializer_after)
+        if sender_key == "bob" and not self._x3dh_bob_initialized:
+            raise ValueError("Bob can send only after receiving Alice's first X3DH-bootstrapped message.")
 
         sender_state = self._get_party(sender_key)
         sender_name = "Alice" if sender_key == "alice" else "Bob"
         receiver_name = "Bob" if sender_key == "alice" else "Alice"
 
         if sender_state.CKs is None:
-            if self._initializer_sent_count() > 0:
-                raise ValueError("Cannot send yet. Receive at least one pending message first.")
+            raise ValueError("Cannot send yet. Receive at least one pending message first.")
 
-            initializer_before = self.session.initializer.name
-            self._reset_session_with_initializer(sender_key)
-            initializer_after = self.session.initializer.name
-            if initializer_after != initializer_before:
-                initializer_switch_warning = self._build_initializer_switch_warning(initializer_before, initializer_after)
-            sender_state = self._get_party(sender_key)
-            sender_name = "Alice" if sender_key == "alice" else "Bob"
-            receiver_name = "Bob" if sender_key == "alice" else "Alice"
-
-        associated_data = b""
+        associated_data = self._session_ad
         plaintext_bytes = text_to_send.encode("utf-8")
+        is_first_alice_message = sender_key == "alice" and not self.session.message_log and not self.pending_messages
+        include_x3dh_header = sender_key == "alice" and not self._x3dh_bob_initialized and isinstance(self._x3dh_initial_header, dict)
+        if is_first_alice_message:
+            ad_prefix = b"X3DH_AD:" + self._session_ad.hex().encode("utf-8") + b"\n\n"
+            plaintext_bytes = ad_prefix + plaintext_bytes
 
         before_snapshot = self._snapshot_party_state(sender_state)
 
@@ -444,6 +547,7 @@ class DoubleRatchetModule(BaseModule):
                 "header": header,
                 "cipher": cipher,
                 "plaintext": plaintext_bytes,
+                "x3dh_header": self._x3dh_initial_header if include_x3dh_header else None,
             }
         )
         self._next_pending_id += 1
@@ -460,7 +564,7 @@ class DoubleRatchetModule(BaseModule):
             pending_id=pending_id,
             before=before_snapshot,
             after=after_snapshot,
-            initializer_switch_warning=initializer_switch_warning,
+            initializer_switch_warning=None,
         )
 
         # Track key generation from this send step.
@@ -506,6 +610,40 @@ class DoubleRatchetModule(BaseModule):
             dialog.open = True
             page.update()
 
+        def show_initial_warning_with_bootstrap_option(message: str) -> None:
+            show_bootstrap_checkbox = ft.Checkbox(
+                label="Show Alice X3DH bootstrap steps after closing",
+                value=True,
+            )
+
+            def close_dialog(e):
+                dialog.open = False
+                page.update()
+                if show_bootstrap_checkbox.value and self._pending_show_alice_x3dh_bootstrap:
+                    self._pending_show_alice_x3dh_bootstrap = False
+                    show_alice_x3dh_bootstrap_visualization()
+
+            dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Warning"),
+                content=ft.Column(
+                    controls=[
+                        ft.Text(message),
+                        show_bootstrap_checkbox,
+                    ],
+                    tight=True,
+                    spacing=8,
+                ),
+                actions=[
+                    ft.TextButton("OK", on_click=close_dialog),
+                ],
+                actions_alignment=ft.MainAxisAlignment.END,
+            )
+
+            page.overlay.append(dialog)
+            dialog.open = True
+            page.update()
+
         if perspective_selector is None:
             def _on_perspective_change_local(e):
                 app_state.perspective = e.control.value
@@ -535,6 +673,46 @@ class DoubleRatchetModule(BaseModule):
         def show_receive_step_visualization(step_data: ReceiveStepVisualizationSnapshot) -> None:
             show_receiving_step_visualization_dialog(page, step_data)
 
+        def show_alice_x3dh_bootstrap_visualization() -> None:
+            alice_state = self._get_party("alice")
+            show_alice_x3dh_bootstrap_visualization_dialog(
+                page,
+                x3dh_state_data=self._x3dh_state_data,
+                rk_after_init=alice_state.RK,
+                cks_after_init=alice_state.CKs,
+                alice_dhs_pub=alice_state.DHs.public if alice_state.DHs is not None else "",
+                alice_dhs_priv=alice_state.DHs.private if alice_state.DHs is not None else "",
+                bob_spk_pub=alice_state.DHr if isinstance(alice_state.DHr, str) else "",
+                session_ad=self._session_ad,
+            )
+
+        def show_bob_x3dh_bootstrap_visualization(
+            x3dh_header: dict[str, Any],
+            on_close=None,
+        ) -> None:
+            bob_spk_public = self._x3dh_bob_spk_pair.public if self._x3dh_bob_spk_pair is not None else ""
+            bob_spk_private = self._x3dh_bob_spk_pair.private if self._x3dh_bob_spk_pair is not None else ""
+            bob_ik_pub = ""
+            bob_ik_priv = ""
+            if isinstance(self._x3dh_state_data, dict):
+                bob_local = self._x3dh_state_data.get("bob_local")
+                if isinstance(bob_local, dict):
+                    bob_identity = bob_local.get("identity_dh")
+                    if isinstance(bob_identity, dict):
+                        bob_ik_pub = bob_identity.get("public") if isinstance(bob_identity.get("public"), str) else ""
+                        bob_ik_priv = bob_identity.get("private") if isinstance(bob_identity.get("private"), str) else ""
+            show_bob_x3dh_bootstrap_visualization_dialog(
+                page,
+                x3dh_header=x3dh_header,
+                shared_secret=self._x3dh_shared_secret,
+                session_ad=self._session_ad,
+                bob_spk_public=bob_spk_public,
+                bob_spk_priv=bob_spk_private,
+                bob_ik_pub=bob_ik_pub,
+                bob_ik_priv=bob_ik_priv,
+                on_close=on_close,
+            )
+
         def _auto_show_receive_visualization_after_send(step_data: SendStepVisualizationSnapshot | None) -> None:
             if step_data is None:
                 return
@@ -546,6 +724,14 @@ class DoubleRatchetModule(BaseModule):
                 return
             receive_snapshot = self._receive_snapshots.get(step_data.pending_id)
             if receive_snapshot is None:
+                return
+            bob_bootstrap = self._last_bob_bootstrap_info
+            if receive_step_visualization_checkbox.value and isinstance(bob_bootstrap, dict) and receive_snapshot.receiver == "Bob" and isinstance(bob_bootstrap.get("x3dh_header"), dict):
+                show_bob_x3dh_bootstrap_visualization(
+                    bob_bootstrap["x3dh_header"],
+                    on_close=lambda: show_receive_step_visualization(receive_snapshot),
+                )
+                self._last_bob_bootstrap_info = None
                 return
             show_receive_step_visualization(receive_snapshot)
 
@@ -673,9 +859,23 @@ class DoubleRatchetModule(BaseModule):
                 _auto_show_receive_visualization_after_send(step_data)
 
         def on_receive_pending(recipient: str, pending_id: int) -> None:
+            pending = next((item for item in self.pending_messages if item.get("id") == pending_id), None)
+            will_show_bob_bootstrap = receive_step_visualization_checkbox.value and recipient.lower() == "bob" and not self._x3dh_bob_initialized and isinstance(pending, dict) and isinstance(pending.get("x3dh_header"), dict)
+            x3dh_header_for_bob = pending.get("x3dh_header") if isinstance(pending, dict) else None
+
             step_data = self.receive_message(recipient, pending_id)
             refresh_view()
             page.update()
+            if will_show_bob_bootstrap and isinstance(x3dh_header_for_bob, dict):
+                if receive_step_visualization_checkbox.value and step_data is not None:
+                    show_bob_x3dh_bootstrap_visualization(
+                        x3dh_header_for_bob,
+                        on_close=lambda: show_receive_step_visualization(step_data),
+                    )
+                else:
+                    show_bob_x3dh_bootstrap_visualization(x3dh_header_for_bob)
+                self._last_bob_bootstrap_info = None
+                return
             if receive_step_visualization_checkbox.value and step_data is not None:
                 show_receive_step_visualization(step_data)
 
@@ -684,7 +884,7 @@ class DoubleRatchetModule(BaseModule):
             self._attacker_compromised_secrets.clear()
             refresh_view()
             page.update()
-            show_warning(self._build_initializer_switch_warning("", ""))
+            show_initial_warning_with_bootstrap_option("Double Ratchet reset completed with a fresh X3DH bootstrap.")
 
         def on_auto_receive_changed(e) -> None:
             nonlocal auto_receive_user_enabled
@@ -697,7 +897,7 @@ class DoubleRatchetModule(BaseModule):
 
         refresh_view()
         if not self._initial_warning_shown:
-            show_warning(self._build_initializer_switch_warning("", ""))
+            show_initial_warning_with_bootstrap_option(self._build_initializer_switch_warning("", ""))
             self._initial_warning_shown = True
 
         return ft.Column(

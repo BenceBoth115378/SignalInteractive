@@ -6,6 +6,7 @@ def serialize_app_state(app_state: AppState) -> dict:
     return {
         "current_module": app_state.current_module,
         "perspective": app_state.perspective,
+        "x3dh_to_dr_bootstrap": app_state.x3dh_to_dr_bootstrap,
     }
 
 
@@ -15,6 +16,9 @@ def apply_app_state(app_state: AppState, data: dict) -> None:
     perspective = data.get("perspective", app_state.perspective)
     if perspective in PERSPECTIVE_SET:
         app_state.perspective = perspective
+
+    bootstrap = data.get("x3dh_to_dr_bootstrap")
+    app_state.x3dh_to_dr_bootstrap = bootstrap if isinstance(bootstrap, dict) else None
 
 
 def serialize_payload(app_state: AppState, router) -> dict:
