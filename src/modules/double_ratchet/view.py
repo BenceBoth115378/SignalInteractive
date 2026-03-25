@@ -155,6 +155,8 @@ def build_timeline(
     on_receive_pending=None,
     on_show_send_visualization=None,
     on_show_receive_visualization=None,
+    on_show_alice_x3dh_bootstrap=None,
+    on_show_bob_x3dh_bootstrap=None,
     attacker_analysis: list[dict] | None = None,
 ):
     perspective_key = perspective.lower()
@@ -231,13 +233,22 @@ def build_timeline(
         lowered = target.lower()
         return lowered == sender.lower() or lowered == receiver.lower()
 
-    col = ft.Column(
-        [
-            ft.Row(
-                controls=[ft.Text("Message Timeline", weight="bold")],
-                alignment=ft.MainAxisAlignment.CENTER,
+    controls = [
+        ft.Row(
+            controls=[ft.Text("Message Timeline", weight="bold")],
+            alignment=ft.MainAxisAlignment.CENTER,
+        )
+    ]
+
+    if on_show_alice_x3dh_bootstrap is not None:
+        controls.append(
+            ft.TextButton(
+                "Show Alice X3DH initialization",
+                on_click=lambda e: on_show_alice_x3dh_bootstrap(),
             )
-        ],
+        )
+    col = ft.Column(
+        controls,
         scroll=ft.ScrollMode.ALWAYS,
         expand=True,
         spacing=6,
@@ -298,6 +309,7 @@ def build_timeline(
         for a in attacker_analysis:
             attacker_results[(a["id"], a["state"])] = a
 
+    bob_bootstrap_inserted = False
     for seq_id, kind, entry in sorted(combined, key=lambda x: x[0], reverse=True):
         i = seq_id
         border = None
@@ -353,6 +365,15 @@ def build_timeline(
                         on_click=lambda e, sid=seq_id: on_show_receive_visualization(sid),
                     )
                 )
+
+            if (not bob_bootstrap_inserted and on_show_bob_x3dh_bootstrap is not None and receiver.lower() == "bob"):
+                col.controls.append(
+                    ft.TextButton(
+                        "Show Bob X3DH initialization",
+                        on_click=lambda e, msg=msg: on_show_bob_x3dh_bootstrap(msg),
+                    )
+                )
+                bob_bootstrap_inserted = True
             row = ft.Row(controls=row_controls, alignment=ft.MainAxisAlignment.START)
             col.controls.append(_build_entry_container(row, dh, pn, n, message_line, border, bgcolor, message_tooltip))
 
@@ -402,6 +423,8 @@ def build_visual(
     on_receive_pending=None,
     on_show_send_visualization=None,
     on_show_receive_visualization=None,
+    on_show_alice_x3dh_bootstrap=None,
+    on_show_bob_x3dh_bootstrap=None,
     attacker_dashboard: ft.Control | None = None,
     attacker_analysis: list[dict] | None = None,
 ):
@@ -449,6 +472,8 @@ def build_visual(
         on_receive_pending=on_receive_pending,
         on_show_send_visualization=on_show_send_visualization,
         on_show_receive_visualization=on_show_receive_visualization,
+        on_show_alice_x3dh_bootstrap=on_show_alice_x3dh_bootstrap,
+        on_show_bob_x3dh_bootstrap=on_show_bob_x3dh_bootstrap,
         attacker_analysis=attacker_analysis,
     )
 

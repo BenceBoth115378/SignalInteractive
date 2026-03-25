@@ -518,7 +518,7 @@ class DoubleRatchetModule(BaseModule):
             return None
 
         if sender_key == "bob" and not self._x3dh_bob_initialized:
-            raise ValueError("Bob can send only after receiving Alice's first X3DH-bootstrapped message.")
+            raise ValueError("Bob can send only after receiving Alice's first X3DH initialized message.")
 
         sender_state = self._get_party(sender_key)
         sender_name = "Alice" if sender_key == "alice" else "Bob"
@@ -800,6 +800,10 @@ class DoubleRatchetModule(BaseModule):
                 on_show_receive_visualization=lambda sid: show_receive_step_visualization(
                     self._receive_snapshots[sid]
                 ) if sid in self._receive_snapshots else None,
+                on_show_alice_x3dh_bootstrap=show_alice_x3dh_bootstrap_visualization,
+                on_show_bob_x3dh_bootstrap=lambda msg: show_bob_x3dh_bootstrap_visualization(
+                    msg.header._asdict() if hasattr(msg, "header") and hasattr(msg.header, "_asdict") else {},
+                ),
                 attacker_dashboard=attacker_dashboard,
                 attacker_analysis=attacker_analysis,
             )
