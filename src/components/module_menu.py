@@ -1,10 +1,21 @@
 import flet as ft
 
+DESIRED_ORDER = ["x3dh", "pqxdh", "double ratchet", "spqr", "triple ratchet"]
+
+
+def module_sort_key(module):
+    try:
+        return DESIRED_ORDER.index(module["id"])
+    except ValueError:
+        return len(DESIRED_ORDER)
+
 
 def build_module_menu(module_cards: list[dict], on_select: callable) -> ft.Control:
-    cards: list[ft.Control] = []
 
-    for module in module_cards:
+    sorted_modules = sorted(module_cards, key=module_sort_key)
+
+    cards: list[ft.Control] = []
+    for module in sorted_modules:
         module_id = module["id"]
         cards.append(
             ft.Container(
