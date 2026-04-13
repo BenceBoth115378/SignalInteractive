@@ -181,7 +181,7 @@ def _format_source_value(value: Any) -> str:
     return last_n_chars(str(value), tail_len)
 
 
-def _try_decrypt_with_message_key(entry: dict[str, Any], mk: bytes) -> str:
+def _try_decrypt_with_message_key(entry: dict[str, Any], mk: bytes, session_ad: bytes) -> str:
     header = entry.get("header")
     cipher = entry.get("cipher")
     if not isinstance(header, Header) or not isinstance(cipher, bytes):
@@ -190,7 +190,7 @@ def _try_decrypt_with_message_key(entry: dict[str, Any], mk: bytes) -> str:
         return ""
 
     try:
-        plaintext = ext.DECRYPT(mk, cipher, ext.CONCAT(b"", header))
+        plaintext = ext.DECRYPT(mk, cipher, ext.CONCAT(session_ad, header))
     except ValueError:
         return ""
     return _decode_plaintext(plaintext)
@@ -211,6 +211,7 @@ def decrypt_with_attacker_selection(
     session: DoubleRatchetState,
     pending_messages: list[dict[str, Any]],
     compromised_secrets: dict[str, dict[str, Any]],
+    session_ad: bytes = b"",
 ) -> list[dict[str, Any]]:
     messages = _message_entries_for_attacker(session, pending_messages)
     results: list[dict[str, Any]] = [
@@ -273,7 +274,7 @@ def decrypt_with_attacker_selection(
 
     def _process_mk_secret(secret: dict[str, Any]) -> None:
         for entry in messages:
-            plaintext = _try_decrypt_with_message_key(entry, secret.get("value"))
+            plaintext = _try_decrypt_with_message_key(entry, secret.get("value"), session_ad)
             if plaintext:
                 mark_decryptable(
                     entry,
@@ -321,7 +322,7 @@ def decrypt_with_attacker_selection(
             mk = chain_cache[cache_key]
             if mk is None:
                 continue
-            plaintext = _try_decrypt_with_message_key(entry, mk)
+            plaintext = _try_decrypt_with_message_key(entry, mk, session_ad)
             if plaintext:
                 mark_decryptable(
                     entry,
@@ -620,7 +621,7 @@ def decrypt_with_attacker_selection(
         if not isinstance(mk, bytes):
             return False
 
-        plaintext = _try_decrypt_with_message_key(entry, mk)
+        plaintext = _try_decrypt_with_message_key(entry, mk, session_ad)
         if not plaintext:
             return False
 
@@ -737,8 +738,9 @@ def get_attacker_analysis(
     session: DoubleRatchetState,
     pending_messages: list[dict[str, Any]],
     compromised_secrets: dict[str, dict[str, Any]],
+    session_ad: bytes = b"",
 ) -> list[dict[str, Any]]:
-    return decrypt_with_attacker_selection(session, pending_messages, compromised_secrets)
+    return decrypt_with_attacker_selection(session, pending_messages, compromised_secrets, session_ad)
 
 
 def build_attacker_dashboard(
@@ -748,6 +750,7 @@ def build_attacker_dashboard(
     compromised_secrets: dict[str, dict[str, Any]],
     set_compromised_secrets: Callable[[dict[str, dict[str, Any]]], None],
     refresh_callback: Callable[[], None],
+    session_ad: bytes = b"",
 ) -> ft.Control:
     options = collect_attacker_secret_options(session)
     option_ids = {item["id"] for item in options}
@@ -901,7 +904,7 @@ def build_attacker_dashboard(
             for key_id in known_ids
             if key_id in options_by_id
         }
-        analysis = decrypt_with_attacker_selection(session, pending_messages, compromised_subset)
+        analysis = decrypt_with_attacker_selection(session, pending_messages, compromised_subset, session_ad)
 
         implied_ids: set[str] = set()
         for result in analysis:

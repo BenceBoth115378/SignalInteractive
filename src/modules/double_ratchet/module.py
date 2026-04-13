@@ -778,11 +778,13 @@ class DoubleRatchetModule(BaseModule):
                     self._attacker_compromised_secrets,
                     lambda value: setattr(self, "_attacker_compromised_secrets", value),
                     refresh_view,
+                    self._session_ad,
                 )
                 attacker_analysis = get_attacker_analysis(
                     self.session,
                     self.pending_messages,
                     self._attacker_compromised_secrets,
+                    self._session_ad,
                 )
             visual_container.content = build_visual(
                 self.session,
