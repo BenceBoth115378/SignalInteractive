@@ -1,6 +1,10 @@
+import os
+
 import flet as ft
+
 from components.data_classes import AppState
 from components.module_menu import build_module_menu
+from components.persistence import ModuleStatePersistence, WEB_UPLOAD_DIR
 from components.router import Router
 
 
@@ -21,13 +25,35 @@ def main(page: ft.Page):
 
     app_state = AppState()
     router = Router()
+    status_text = ft.Text("", size=12, color=ft.Colors.BLUE)
+    persistence: ModuleStatePersistence | None = None
 
     main_container = ft.Column(expand=True)
+
+    def _set_status(message: str, is_error: bool = False) -> None:
+        status_text.value = message
+        status_text.color = ft.Colors.RED if is_error else ft.Colors.BLUE
+
+    def _state_controls() -> ft.Row:
+        if persistence is None:
+            return ft.Row(controls=[], spacing=6)
+        return persistence.build_controls()
 
     def refresh():
         main_container.controls.clear()
 
         if not app_state.current_module:
+            main_container.controls.append(
+                ft.Row(
+                    controls=[
+                        ft.Text("Signal Protocol Models", size=20, weight=ft.FontWeight.BOLD),
+                        _state_controls(),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                )
+            )
+            if status_text.value:
+                main_container.controls.append(status_text)
             main_container.controls.append(
                 build_module_menu(router.get_module_cards(), on_select=_select_module)
             )
@@ -44,11 +70,13 @@ def main(page: ft.Page):
         )
         main_container.controls.append(
             ft.Row(
-                controls=[back_to_menu],
-                alignment=ft.MainAxisAlignment.START,
+                controls=[back_to_menu, _state_controls()],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             )
         )
+        if status_text.value:
+            main_container.controls.append(status_text)
         main_container.controls.append(ft.Divider(height=1))
         main_container.controls.append(content)
 
@@ -63,8 +91,11 @@ def main(page: ft.Page):
         app_state.perspective = "global"
         refresh()
 
+    persistence = ModuleStatePersistence(page, app_state, router, refresh, _set_status)
     page.add(main_container)
     refresh()
 
 
-ft.run(main)
+WEB_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("FLET_SECRET_KEY", "signal-interactive-module-state-upload")
+ft.run(main, upload_dir=str(WEB_UPLOAD_DIR))

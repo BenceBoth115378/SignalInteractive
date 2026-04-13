@@ -42,6 +42,9 @@ class Router:
         return module_state
 
     def import_state(self, state: dict) -> None:
+        if not isinstance(state, dict):
+            return
+
         for module_name, module_data in state.items():
             module = self.modules.get(module_name)
             if module and hasattr(module, "import_state"):

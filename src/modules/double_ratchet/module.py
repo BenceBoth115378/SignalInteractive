@@ -6,6 +6,8 @@ from components.data_classes import (
     DHKeyPair,
     DoubleRatchetState,
     Header,
+    KeyEvent,
+    KeyHistory,
     MessageState,
     PartyStateSnapshot,
     ReceiveStepVisualizationSnapshot,
@@ -60,6 +62,75 @@ def _decode_bytes(value: Any) -> Any:
     return value
 
 
+def _encode_nested(value: Any) -> Any:
+    if isinstance(value, bytes):
+        return _encode_bytes(value)
+    if isinstance(value, dict):
+        return {key: _encode_nested(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_encode_nested(item) for item in value]
+    return value
+
+
+def _decode_nested(value: Any) -> Any:
+    decoded = _decode_bytes(value)
+    if decoded is not value:
+        return decoded
+    if isinstance(value, dict):
+        return {key: _decode_nested(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_decode_nested(item) for item in value]
+    return value
+
+
+def _deserialize_key_event(data: Any) -> KeyEvent | None:
+    if not isinstance(data, dict):
+        return None
+
+    used_for_raw = data.get("used_for", [])
+    used_for = [item for item in used_for_raw if isinstance(item, str)] if isinstance(used_for_raw, list) else []
+
+    return KeyEvent(
+        key_type=data.get("key_type", "") if isinstance(data.get("key_type"), str) else "",
+        key_number=data.get("key_number", 0) if isinstance(data.get("key_number"), int) else 0,
+        key_value=_decode_nested(data.get("key_value")),
+        created_at_step=data.get("created_at_step", "") if isinstance(data.get("created_at_step"), str) else "",
+        created_in_context=data.get("created_in_context", "") if isinstance(data.get("created_in_context"), str) else "",
+        public_value=data.get("public_value", "") if isinstance(data.get("public_value"), str) else "",
+        party=data.get("party", "") if isinstance(data.get("party"), str) else "",
+        direction=data.get("direction", "") if isinstance(data.get("direction"), str) else "",
+        remote_public=data.get("remote_public", "") if isinstance(data.get("remote_public"), str) else "",
+        start_send_n=data.get("start_send_n", 0) if isinstance(data.get("start_send_n"), int) else 0,
+        start_recv_n=data.get("start_recv_n", 0) if isinstance(data.get("start_recv_n"), int) else 0,
+        start_n=data.get("start_n", 0) if isinstance(data.get("start_n"), int) else 0,
+        used_for=used_for,
+    )
+
+
+def _deserialize_key_history(data: Any) -> KeyHistory:
+    history = KeyHistory()
+    if not isinstance(data, dict):
+        return history
+
+    def _events(name: str) -> list[KeyEvent]:
+        raw_events = data.get(name, [])
+        if not isinstance(raw_events, list):
+            return []
+
+        events: list[KeyEvent] = []
+        for raw_event in raw_events:
+            event = _deserialize_key_event(raw_event)
+            if event is not None:
+                events.append(event)
+        return events
+
+    history.rk_events = _events("rk_events")
+    history.cks_events = _events("cks_events")
+    history.ckr_events = _events("ckr_events")
+    history.dh_events = _events("dh_events")
+    return history
+
+
 def _serialize_party(state: PartyState) -> dict:
     skipped = [
         {
@@ -81,6 +152,7 @@ def _serialize_party(state: PartyState) -> dict:
         "Nr": state.Nr,
         "PN": state.PN,
         "MKSKIPPED": skipped,
+        "key_history": _encode_nested(asdict(state.key_history)),
     }
 
 
@@ -108,6 +180,7 @@ def _deserialize_party(data: dict, default_name: str) -> PartyState:
         Nr=data.get("Nr", 0),
         PN=data.get("PN", 0),
         MKSKIPPED=skipped,
+        key_history=_deserialize_key_history(_decode_nested(data.get("key_history", {}))),
     )
 
 
@@ -208,6 +281,7 @@ class DoubleRatchetModule(BaseModule):
             "x3dh_state_data": self._x3dh_state_data,
             "x3dh_bob_initialized": self._x3dh_bob_initialized,
             "pending_show_alice_x3dh_bootstrap": self._pending_show_alice_x3dh_bootstrap,
+            "attacker_compromised_secrets": _encode_nested(self._attacker_compromised_secrets),
         }
 
     def import_state(self, data: dict) -> None:
@@ -279,6 +353,15 @@ class DoubleRatchetModule(BaseModule):
         self._x3dh_state_data = data.get("x3dh_state_data") if isinstance(data.get("x3dh_state_data"), dict) else None
         self._x3dh_bob_initialized = bool(data.get("x3dh_bob_initialized", False))
         self._pending_show_alice_x3dh_bootstrap = bool(data.get("pending_show_alice_x3dh_bootstrap", True))
+        loaded_compromised = _decode_nested(data.get("attacker_compromised_secrets", {}))
+        if isinstance(loaded_compromised, dict):
+            self._attacker_compromised_secrets = {
+                key_id: dict(secret)
+                for key_id, secret in loaded_compromised.items()
+                if isinstance(key_id, str) and isinstance(secret, dict)
+            }
+        else:
+            self._attacker_compromised_secrets = {}
         self._last_bob_bootstrap_info = None
 
         max_log_seq_id = max((msg.seq_id for msg in self.session.message_log), default=0)
