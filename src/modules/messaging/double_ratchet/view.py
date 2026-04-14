@@ -241,7 +241,7 @@ def build_timeline(
         )
     ]
 
-    if on_show_alice_x3dh_bootstrap is not None:
+    if on_show_alice_x3dh_bootstrap is not None and perspective_key in {"global", "alice"}:
         controls.append(
             ft.TextButton(
                 "Show Alice X3DH initialization",
@@ -367,7 +367,8 @@ def build_timeline(
                     )
                 )
 
-            if (not bob_bootstrap_inserted and on_show_bob_x3dh_bootstrap is not None and receiver.lower() == "bob"):
+            if (not bob_bootstrap_inserted and on_show_bob_x3dh_bootstrap is not None and receiver.lower() == "bob"
+                and perspective_key in {"global", "bob"}):
                 col.controls.append(
                     ft.TextButton(
                         "Show Bob X3DH initialization",
