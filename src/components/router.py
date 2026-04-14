@@ -1,5 +1,5 @@
-from modules.double_ratchet.module import DoubleRatchetModule
-from modules.x3dh.module import X3DHModule
+from modules.messaging.double_ratchet.module import DoubleRatchetModule
+from modules.key_exchange.x3dh.module import X3DHModule
 
 
 class Router:

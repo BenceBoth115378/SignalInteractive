@@ -13,15 +13,15 @@ from components.data_classes import (
     ReceiveStepVisualizationSnapshot,
     SendStepVisualizationSnapshot,
 )
-from modules.base_module import BaseModule
-from modules.double_ratchet.logic import (
+from modules.messaging.messaging_base_module import MessagingBaseModule
+from modules.messaging.double_ratchet.logic import (
     RatchetInitBob,
     RatchetEncrypt,
     RatchetReceiveKey,
     initialize_session_from_x3dh,
 )
 from modules import external as ext
-from modules.x3dh.logic import (
+from modules.key_exchange.x3dh.logic import (
     alice_calculates_associated_data,
     alice_generates_ek_and_derives_sk,
     alice_sends_initial_message,
@@ -31,19 +31,20 @@ from modules.x3dh.logic import (
     request_bob_bundle_for_alice,
     upload_alice_initial_bundle,
 )
-from modules.double_ratchet.step_visualization import (
+from modules.messaging.double_ratchet.step_visualization import (
     show_alice_x3dh_bootstrap_visualization_dialog,
     show_bob_x3dh_bootstrap_visualization_dialog,
     show_receiving_step_visualization_dialog,
     show_sending_step_visualization_dialog,
 )
-from modules.double_ratchet.key_history import (
+from modules.messaging.double_ratchet.key_history import (
     initialize_key_history,
     track_keys_from_send_snapshot,
     track_keys_from_receive_snapshot,
 )
-from modules.double_ratchet.attacker_dashboard import build_attacker_dashboard, get_attacker_analysis
-from modules.double_ratchet.view import build_visual
+from modules.messaging.double_ratchet.attacker_dashboard.logic import get_attacker_analysis
+from modules.messaging.double_ratchet.attacker_dashboard.view import build_attacker_dashboard
+from modules.messaging.double_ratchet.view import build_visual
 from components.data_classes import PartyState
 
 
@@ -231,7 +232,7 @@ def _deserialize_message(data: dict) -> MessageState:
     )
 
 
-class DoubleRatchetModule(BaseModule):
+class DoubleRatchetModule(MessagingBaseModule):
     def __init__(self):
         self.session = DoubleRatchetState()
         self.pending_messages: list[dict[str, Any]] = []
@@ -1019,3 +1020,7 @@ class DoubleRatchetModule(BaseModule):
             ],
             expand=True,
         )
+
+
+# Backward compatibility alias for existing imports.
+DoubleRatchetModule = DoubleRatchetModule

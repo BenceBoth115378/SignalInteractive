@@ -1,7 +1,8 @@
 import flet as ft
 from components.data_classes import DoubleRatchetState
 from components.data_classes import PartyState
-from modules.double_ratchet.key_history import get_key_tooltip_text
+from modules.messaging.double_ratchet.key_history import get_key_tooltip_text
+from modules.messaging.messaging_base_view import is_party_visible
 from modules.base_view import format_key, last_n_chars, make_copy_handler
 from modules.tooltip_helpers import build_tooltip_text, get_tooltip_messages
 
@@ -17,7 +18,7 @@ def _build_party_panel(
     message_input: ft.TextField | None = None,
     on_send=None,
 ):
-    visible = perspective == "global" or perspective.lower() == party.name.lower()
+    visible = is_party_visible(perspective, party.name)
     header = party.name if role_title is None else f"{role_title}: {party.name}"
     tooltips = get_tooltip_messages("double_ratchet")
 
@@ -68,7 +69,7 @@ def _build_party_panel(
 
 
 def _build_used_keys_history_panel(page: ft.Page, party: PartyState, perspective: str) -> ft.Control:
-    visible = perspective == "global" or perspective.lower() == party.name.lower()
+    visible = is_party_visible(perspective, party.name)
     tooltips = get_tooltip_messages("double_ratchet")
 
     panel_controls: list[ft.Control] = [

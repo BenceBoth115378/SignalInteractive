@@ -6,8 +6,8 @@ import json
 import flet as ft
 
 from components.data_classes import X3DHState
-from modules.base_module import BaseModule
-from modules.x3dh.logic import (
+from modules.key_exchange.key_exchange_base_module import KeyExchangeBaseModule
+from modules.key_exchange.x3dh.logic import (
     alice_calculates_associated_data,
     alice_generates_ek_and_derives_sk,
     alice_rotates_signed_prekey_bundle,
@@ -24,8 +24,8 @@ from modules.x3dh.logic import (
     server_sends_bob_opk_to_requester,
     upload_alice_initial_bundle,
 )
-from modules.x3dh.step_visualization import show_x3dh_action_step_visualization_dialog
-from modules.x3dh.view import build_visual
+from modules.key_exchange.x3dh.step_visualization import show_x3dh_action_step_visualization_dialog
+from modules.key_exchange.x3dh.view import build_visual
 
 
 def _serialize_x3dh_state(state: X3DHState) -> dict:
@@ -49,7 +49,7 @@ def _deserialize_x3dh_state(data: dict) -> X3DHState:
     )
 
 
-class X3DHModule(BaseModule):
+class X3DHModule(KeyExchangeBaseModule):
     def __init__(self):
         self.state = self._new_state()
 
@@ -299,3 +299,7 @@ class X3DHModule(BaseModule):
 
         refresh()
         return visual_container
+
+
+# Backward compatibility alias for existing imports.
+X3DHModule = X3DHModule

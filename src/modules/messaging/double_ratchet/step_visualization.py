@@ -3,7 +3,14 @@ from typing import Any, Callable
 import flet as ft
 from components.data_classes import DHKeyPair, ReceiveStepVisualizationSnapshot, SendStepVisualizationSnapshot
 from modules import external as ext
-from modules.base_view import format_key
+from modules.base_step_visualization import (
+    format_tooltip_value as _shared_format_tooltip_value,
+    page_size as _shared_page_size,
+    safe_dimension as _shared_safe_dimension,
+    to_text as _shared_to_text,
+    tooltip_with_full_value as _shared_tooltip_with_full_value,
+    with_tooltip as _shared_with_tooltip,
+)
 from modules.tooltip_helpers import get_tooltip_messages
 
 
@@ -21,42 +28,11 @@ def _preview_value(value: Any, limit: int = 28) -> str:
 
 
 def _format_tooltip_value(value: Any, indent: int = 0) -> str:
-    prefix = "  " * indent
-    if value is None:
-        return f"{prefix}None"
-
-    if isinstance(value, dict):
-        if not value:
-            return f"{prefix}(empty)"
-        lines: list[str] = []
-        for key, nested in value.items():
-            if isinstance(nested, (dict, list, tuple, set)):
-                lines.append(f"{prefix}{key}:")
-                lines.append(_format_tooltip_value(nested, indent + 1))
-            else:
-                lines.append(f"{prefix}{key}: {format_key(nested)}")
-        return "\n".join(lines)
-
-    if isinstance(value, (list, tuple, set)):
-        items = list(value)
-        if isinstance(value, set):
-            items = sorted(items, key=lambda item: format_key(item))
-        if not items:
-            return f"{prefix}(empty)"
-        lines = []
-        for item in items:
-            if isinstance(item, (dict, list, tuple, set)):
-                lines.append(f"{prefix}-")
-                lines.append(_format_tooltip_value(item, indent + 1))
-            else:
-                lines.append(f"{prefix}- {format_key(item)}")
-        return "\n".join(lines)
-
-    return f"{prefix}{format_key(value)}"
+    return _shared_format_tooltip_value(value, indent)
 
 
 def _to_text(value: Any) -> str:
-    return _format_tooltip_value(value)
+    return _shared_to_text(value)
 
 
 def _last_n_chars(value: Any, count: int = 8) -> str:
@@ -67,46 +43,19 @@ def _last_n_chars(value: Any, count: int = 8) -> str:
 
 
 def _tooltip_with_full_value(message: str | None, full_value: Any = None) -> str | None:
-    parts: list[str] = []
-    if message:
-        parts.append(message)
-    if full_value is not None:
-        if parts:
-            parts.append("\n────────────\n")
-        parts.append(f"Full value:\n{_to_text(full_value)}")
-    if not parts:
-        return None
-    return "".join(parts)
+    return _shared_tooltip_with_full_value(message, full_value)
 
 
 def _safe_dimension(value: Any, fallback: int) -> int:
-    if isinstance(value, (int, float)) and value > 0:
-        return int(value)
-    return fallback
+    return _shared_safe_dimension(value, fallback)
 
 
 def _page_size(page: ft.Page) -> tuple[int, int]:
-    width = getattr(page, "width", None)
-    height = getattr(page, "height", None)
-    window = getattr(page, "window", None)
-
-    if width is None and window is not None:
-        width = getattr(window, "width", None)
-    if height is None and window is not None:
-        height = getattr(window, "height", None)
-
-    return _safe_dimension(width, 1100), _safe_dimension(height, 760)
+    return _shared_page_size(page)
 
 
 def _with_tooltip(control: ft.Control, message: str | None, full_value: Any = None) -> ft.Control:
-    tooltip_message = _tooltip_with_full_value(message, full_value)
-    if tooltip_message:
-        return ft.Container(
-            content=control,
-            tooltip=ft.Tooltip(message=tooltip_message, prefer_below=False),
-            padding=0,
-        )
-    return control
+    return _shared_with_tooltip(control, message, full_value)
 
 
 def _flow_node(
