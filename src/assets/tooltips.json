@@ -175,5 +175,48 @@
     "dr_bootstrap_set_rk": "Bob initialization assignment where RK is set directly from SK after successful X3DH shared-secret derivation.",
     "dr_bootstrap_ready": "Bootstrap completion marker: Bob now has the minimum Double Ratchet receive-state values and can process incoming ratcheted messages.",
     "dr_bootstrap_summary": "Summary of key values persisted at the end of bootstrap. Use this panel to compare with the receive-step initial state."
+  },
+  "pqxdh": {
+    "x3dh_step_key_ik_pub": "Long-term EC identity public key used for authentication context in PQXDH and for AD construction.",
+    "x3dh_step_key_ik_priv": "Long-term EC identity private key held locally and used for signing and local key agreement operations.",
+    "x3dh_step_key_spk_pub": "Signed EC prekey public value published in the bundle for initiator processing.",
+    "x3dh_step_key_spk_priv": "Signed EC prekey private value used locally for decapsulation-side DH computations.",
+    "x3dh_step_key_spk_sig": "Signature over prekey public material, generated with IK_priv and verified by the peer.",
+    "x3dh_step_key_opk_pub": "One-time prekey public value. In PQXDH this can refer to EC OPK or PQ OPK context depending on the node label.",
+    "x3dh_step_key_opk_priv": "One-time prekey private value stored locally and consumed when a matching OPK is selected.",
+    "x3dh_step_key_ek_pub": "Alice ephemeral EC public key used in this PQXDH run and sent in the initial message header.",
+    "x3dh_step_key_ek_priv": "Alice ephemeral EC private key used to compute DH terms for this PQXDH session.",
+    "x3dh_step_key_sk": "Shared secret key derived from EC DH outputs plus PQKEM shared secret through KDF_SK.",
+    "x3dh_step_key_ad": "Associated data binding identities for the initial encrypted payload (AD = EncodeEC(IKA) || EncodeEC(IKB)).",
+    "x3dh_step_key_ciphertext": "AEAD ciphertext of the initial payload, encrypted with the derived SK.",
+    "x3dh_step_node_generate_dh": "Generate a fresh EC Diffie-Hellman key pair used for IK, SPK, EK, or EC OPK values.",
+    "x3dh_step_node_kdf_sk": "Derive the final shared secret SK from all required EC DH terms and the PQ shared secret.",
+    "x3dh_step_node_calc_ad": "Compute associated data from party identities to bind message context and prevent substitution.",
+    "x3dh_step_node_request_bundle": "Request Bob prekey material from server: IK, SPK, signatures, and selected EC/PQ one-time prekeys.",
+
+    "pqxdh_step_key_pqspk_pub": "Bob or Alice PQ signed prekey public value (last-resort PQ prekey) used for PQXDH KEM path.",
+    "pqxdh_step_key_pqspk_priv": "Private value of PQ signed prekey, used only locally for decapsulation and never transmitted.",
+    "pqxdh_step_key_pqspk_sig": "Signature over PQSPK public value, created with IK_priv and verified by peers.",
+    "pqxdh_step_key_pqopk_pub": "PQ one-time prekey public value intended for one-time consumption by initiators.",
+    "pqxdh_step_key_pqopk_priv": "PQ one-time prekey private value stored locally and consumed by the recipient side.",
+    "pqxdh_step_key_pqpkb_pub": "Selected Bob PQ prekey public value used by Alice for PQKEM encapsulation.",
+    "pqxdh_step_key_pqpkb_sig": "Signature corresponding to the selected Bob PQ prekey value (PQPKB).",
+    "pqxdh_step_key_pqpkb_priv": "Recipient-side private key matching selected PQPKB public key used to decapsulate CT.",
+    "pqxdh_step_key_ct": "PQKEM ciphertext output from encapsulation. This value is sent in header for Bob decapsulation.",
+    "pqxdh_step_key_ss": "PQ shared secret output by PQKEM encapsulate/decapsulate; combined with EC DH outputs for SK derivation.",
+    "pqxdh_step_key_id_ec": "Identifier of selected EC OPK (IdEC) for this session.",
+    "pqxdh_step_key_id_kem": "Identifier of selected PQ prekey (IdKEM) for this session.",
+
+    "pqxdh_step_node_generate_pqkem": "Generate a fresh PQKEM key pair (public/private) for PQSPK or PQOPK material.",
+    "pqxdh_step_node_pqkem_enc": "PQKEM encapsulation with Bob selected PQ prekey public key, producing CT and SS.",
+    "pqxdh_step_node_pqkem_dec": "PQKEM decapsulation with recipient private key and CT, recovering the same SS.",
+    "pqxdh_step_node_verify_pq": "Verify signature over selected PQ key material using Bob identity verification context.",
+    "pqxdh_step_node_upload_bundle": "Upload combined PQXDH registration bundle (IK, SPK, signatures, PQSPK, PQ signature) to server.",
+    "pqxdh_step_node_upload_opk_pair": "Upload synchronized EC OPK and PQ OPK entries to server-side one-time prekey pools.",
+    "pqxdh_step_node_upload_spk_pqspk": "Upload rotated EC SPK and PQSPK material, preserving old keys for delayed messages.",
+
+    "pqxdh_step_state_pqopk_count_local": "Number of PQ one-time prekeys currently stored in local state.",
+    "pqxdh_step_state_pqopk_count_server": "Number of PQ one-time prekeys currently available on server for this party.",
+    "pqxdh_step_state_pq_is_last_resort": "Indicates whether selected PQ key came from last-resort PQSPK instead of PQ one-time prekey set."
   }
 }
