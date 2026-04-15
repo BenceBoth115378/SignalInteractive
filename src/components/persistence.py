@@ -96,10 +96,10 @@ class ModuleStatePersistence:
 
     async def _desktop_state_root(self) -> Path:
         try:
-            documents_dir = await self.page.storage_paths.get_application_documents_directory()
+            documents_dir = await ft.StoragePaths(self.page).get_application_documents_directory()
         except Exception:
             documents_dir = str(Path.cwd())
-        return Path(documents_dir) / DESKTOP_STATE_SUBDIR
+        return Path(documents_dir)
 
     def _module_file_name(self, module_id: str) -> str:
         return f"{module_id}.json"

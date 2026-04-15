@@ -8,7 +8,7 @@ from modules.base_view import format_key, last_n_chars, make_copy_handler
 from modules.tooltip_helpers import build_tooltip_text, get_tooltip_messages
 
 
-SUMMARY_PANEL_HEIGHT = 170
+SUMMARY_PANEL_HEIGHT = 230
 
 
 def _short(value: str | None, length: int = 12) -> str:
@@ -82,7 +82,10 @@ def _build_party_summary(
     identity_pub = payload.get("identity_dh", {}).get("public")
     spk_pub = payload.get("signed_prekey", {}).get("public")
     spk_signature = payload.get("signed_prekey_signature", "")
+    pq_spk_pub = payload.get("pq_signed_prekey", {}).get("public")
+    pq_spk_signature = payload.get("pq_signed_prekey_signature", "")
     opk_count = len(payload.get("opk_public_by_id", {}))
+    pq_opk_count = len(payload.get("pq_opk_public_by_id", {}))
 
     return ft.Container(
         content=ft.Column(
@@ -90,6 +93,7 @@ def _build_party_summary(
                 ft.Text(title, weight=ft.FontWeight.BOLD),
                 _build_tooltip_value(page, tooltips, "IK_pub", identity_pub),
                 _build_tooltip_value(page, tooltips, "SPK_pub", spk_pub),
+                _build_tooltip_value(page, tooltips, "PQSPK_pub", pq_spk_pub),
                 build_tooltip_text(
                     "SPK_signature",
                     "present" if spk_signature else "missing",
@@ -98,9 +102,21 @@ def _build_party_summary(
                     on_click=make_copy_handler(page, "SPK signature", spk_signature) if page is not None and spk_signature else None,
                 ),
                 build_tooltip_text(
+                    "PQSPK_sig",
+                    "present" if pq_spk_signature else "missing",
+                    tooltips.get("PQSPK_sig", ""),
+                    full_value=pq_spk_signature or None,
+                    on_click=make_copy_handler(page, "PQSPK signature", pq_spk_signature) if page is not None and pq_spk_signature else None,
+                ),
+                build_tooltip_text(
                     "local_opk_count",
                     str(opk_count),
                     tooltips.get("local_opk_count", ""),
+                ),
+                build_tooltip_text(
+                    "local_pqopk_count",
+                    str(pq_opk_count),
+                    tooltips.get("local_pqopk_count", ""),
                 ),
             ],
             spacing=4,
@@ -121,12 +137,15 @@ def _build_server_summary(
 ) -> ft.Control:
     alice_bundle = server.get("alice_bundle")
     bob_bundle = server.get("bob_bundle")
-    alice_opk_count = len(server.get('alice_available_opk_ids', []))
+    alice_opk_count = len(server.get("alice_available_opk_ids", []))
+    bob_opk_count = len(server.get("bob_available_opk_ids", []))
+    alice_pq_opk_count = len(server.get("alice_pq_available_opk_ids", []))
+    bob_pq_opk_count = len(server.get("bob_pq_available_opk_ids", []))
 
     opk_bg_color = None
-    if alice_opk_count == 0:
+    if alice_opk_count == 0 or alice_pq_opk_count == 0:
         opk_bg_color = ft.Colors.RED_300
-    elif alice_opk_count < 3:
+    elif alice_opk_count < 3 or alice_pq_opk_count < 3:
         opk_bg_color = ft.Colors.YELLOW_300
 
     alice_opk_display = ft.Container(
@@ -144,6 +163,21 @@ def _build_server_summary(
         tooltips.get("alice_server_opk_count", ""),
     )
 
+    alice_pq_opk_display = ft.Container(
+        content=build_tooltip_text(
+            "alice_server_pqopk_count",
+            str(alice_pq_opk_count),
+            tooltips.get("alice_server_pqopk_count", ""),
+        ),
+        bgcolor=opk_bg_color,
+        padding=6,
+        border_radius=4,
+    ) if opk_bg_color else build_tooltip_text(
+        "alice_server_pqopk_count",
+        str(alice_pq_opk_count),
+        tooltips.get("alice_server_pqopk_count", ""),
+    )
+
     _ = page
     _ = alice_needs_to_upload_opk
 
@@ -157,6 +191,7 @@ def _build_server_summary(
                     tooltips.get("alice_bundle_status", ""),
                 ),
                 alice_opk_display,
+                alice_pq_opk_display,
                 build_tooltip_text(
                     "bob_bundle_status",
                     "available" if isinstance(bob_bundle, dict) else "missing",
@@ -164,8 +199,13 @@ def _build_server_summary(
                 ),
                 build_tooltip_text(
                     "bob_server_opk_count",
-                    str(len(server.get("bob_available_opk_ids", []))),
+                    str(bob_opk_count),
                     tooltips.get("bob_server_opk_count", ""),
+                ),
+                build_tooltip_text(
+                    "bob_server_pqopk_count",
+                    str(bob_pq_opk_count),
+                    tooltips.get("bob_server_pqopk_count", ""),
                 ),
             ],
             spacing=4,
@@ -208,7 +248,7 @@ def _phase1_container(
     )
 
     upload_button = ft.Button(
-        "Alice generates and uploads new OPK",
+        "Alice generates and uploads new OPK/PQOPK",
         on_click=on_alice_upload_new_opk,
         disabled=(not alice_generated) or (not alice_registered),
         style=ft.ButtonStyle(bgcolor=ft.Colors.ORANGE_300) if alice_needs_to_upload_opk else None,
@@ -221,7 +261,13 @@ def _phase1_container(
                 ft.Row([generate_button]),
                 ft.Row([upload_initial_button]),
                 ft.Row([upload_button], expand=True),
-                ft.Row([ft.Button("Alice generates and uploads new SPK bundle", on_click=on_alice_rotate_spk, disabled=(not alice_generated) or (not alice_registered))]),
+                ft.Row([
+                    ft.Button(
+                        "Alice generates and uploads new SPK/PQSPK bundle",
+                        on_click=on_alice_rotate_spk,
+                        disabled=(not alice_generated) or (not alice_registered),
+                    )
+                ]),
             ],
             spacing=8,
         ),
@@ -234,13 +280,13 @@ def _phase1_container(
                 ft.Text("Server Actions", weight=ft.FontWeight.BOLD),
                 ft.Row([
                     ft.Button(
-                        "Send 1 Alice OPK to an another requester",
+                        "Send 1 Alice OPK/PQOPK to another requester",
                         on_click=on_server_send_alice_opk,
                         expand=True,
                         disabled=(not alice_generated) or (not alice_registered),
                     )
                 ]),
-                ft.Row([ft.Button("Send 1 Bob OPK to an another requester", on_click=on_server_send_bob_opk, expand=True)]),
+                ft.Row([ft.Button("Send 1 Bob OPK/PQOPK to another requester", on_click=on_server_send_bob_opk, expand=True)]),
             ],
             spacing=8,
         ),
@@ -281,13 +327,19 @@ def _phase2_container(
     if isinstance(bundle, dict):
         bundle_status = "with OPK" if bundle.get("opk_public") else "without OPK"
 
+    pq_bundle_status = "not requested"
+    if isinstance(bundle, dict):
+        pq_bundle_status = "with PQOPK" if bundle.get("pq_prekey_id") is not None and not bundle.get("pq_is_last_resort") else "with PQSPK"
+
     sk_preview = "-"
     ad_preview = "-"
     dh_count = "-"
+    pq_cipher_preview = "-"
     if isinstance(derived, dict):
         sk_preview = _short(derived.get("shared_secret"), 20)
         ad_preview = _short(derived.get("associated_data"), 20)
         dh_count = str(derived.get("dh_count", "-"))
+        pq_cipher_preview = _short(derived.get("kem_ciphertext"), 20)
 
     highlight_request = enabled and not bundle_requested
     highlight_verify = enabled and bundle_requested and not signature_verified
@@ -301,13 +353,13 @@ def _phase2_container(
         style=ft.ButtonStyle(bgcolor=ft.Colors.ORANGE_300) if highlight_request else None,
     )
     verify_button = ft.Button(
-        "2) Verify Bob signed prekey signature",
+        "2) Verify Bob signed prekey signatures",
         on_click=on_verify_signature,
         disabled=not enabled,
         style=ft.ButtonStyle(bgcolor=ft.Colors.ORANGE_300) if highlight_verify else None,
     )
     generate_ek_button = ft.Button(
-        "3) Generate EK and derive SK (3 or 4 DH)",
+        "3) Generate EK and derive SK (3 or 4 DH + PQKEM)",
         on_click=on_generate_ek_and_sk,
         disabled=not enabled,
         style=ft.ButtonStyle(bgcolor=ft.Colors.ORANGE_300) if highlight_generate_ek else None,
@@ -332,11 +384,18 @@ def _phase2_container(
     texts = ft.Column(
         controls=[
             build_tooltip_text("bob_bundle_status", bundle_status, tooltips.get("phase2_bob_bundle_status", "")),
+            build_tooltip_text("bob_pq_bundle_status", pq_bundle_status, tooltips.get("phase2_bob_pq_bundle_status", "")),
             build_tooltip_text(
                 "shared_secret_preview",
                 sk_preview,
                 tooltips.get("phase2_shared_secret_preview", ""),
                 full_value=derived.get("shared_secret") if isinstance(derived, dict) else None,
+            ),
+            build_tooltip_text(
+                "pq_cipher_preview",
+                pq_cipher_preview,
+                tooltips.get("phase2_pq_cipher_preview", ""),
+                full_value=derived.get("kem_ciphertext") if isinstance(derived, dict) else None,
             ),
             build_tooltip_text(
                 "ad_preview",
@@ -357,15 +416,14 @@ def _phase2_container(
                     "Disabled until Phase 1 is complete." if not enabled else "",
                     color=ft.Colors.ON_SURFACE_VARIANT,
                 ),
-                ft.Row([buttons,
-                        ft.VerticalDivider(),
-                        texts],
-                       expand=True,
-                       vertical_alignment=ft.CrossAxisAlignment.START),
+                ft.Row([
+                    buttons,
+                    ft.VerticalDivider(),
+                    texts,
+                ], expand=True, vertical_alignment=ft.CrossAxisAlignment.START),
             ],
             spacing=8,
         ),
-
         border=ft.Border.all(1, ft.Colors.OUTLINE),
         border_radius=10,
         padding=12,
@@ -432,6 +490,11 @@ def _container(
                 build_tooltip_text("decryption_ok", str(bob_result.get("decryption_ok", False)), tooltips.get("decryption_ok", "")),
                 build_tooltip_text("dh_count", str(bob_result.get("dh_count", "-")), tooltips.get("dh_count", "")),
                 build_tooltip_text(
+                    "pq_secret_included",
+                    str(bob_result.get("pq_secret_included", False)),
+                    tooltips.get("pq_secret_included", ""),
+                ),
+                build_tooltip_text(
                     "decrypted_text",
                     _short(str(bob_result.get("decrypted_text", "-")), 24),
                     tooltips.get("decrypted_text", ""),
@@ -489,12 +552,12 @@ def build_visual(
     is_phase1_done: bool,
     is_phase2_done: bool,
 ) -> ft.Control:
-    tooltips = get_tooltip_messages("x3dh")
+    tooltips = get_tooltip_messages("pqxdh")
 
     header_controls: list[ft.Control] = [
         ft.Row(
             controls=[
-                ft.Text("X3DH Model", size=26, weight=ft.FontWeight.BOLD),
+                ft.Text("PQXDH Model", size=26, weight=ft.FontWeight.BOLD),
                 ft.Row(
                     controls=[
                         step_visualization_checkbox,

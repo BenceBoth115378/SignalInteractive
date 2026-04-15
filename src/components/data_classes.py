@@ -30,6 +30,22 @@ class X3DHState:
 
 
 @dataclass
+class PQXDHState:
+    alice_local: dict | None = None
+    alice_generated: bool = False
+    server_state: dict = field(default_factory=dict)
+    bob_local: dict | None = None
+    last_bundle_for_alice: dict | None = None
+    alice_derived: dict | None = None
+    initial_message: dict | None = None
+    bob_receive_result: dict | None = None
+    events: list[str] = field(default_factory=list)
+    phase2_signature_verified: bool = False
+    phase2_ek_generated: bool = False
+    alice_needs_to_upload_opk: bool = False
+
+
+@dataclass
 class DoubleRatchetState:
     initializer: PartyState = field(default_factory=lambda: PartyState("Alice"))
     responder: PartyState = field(default_factory=lambda: PartyState("Bob"))

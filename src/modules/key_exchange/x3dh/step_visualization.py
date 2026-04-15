@@ -4,54 +4,40 @@ from typing import Any
 
 import flet as ft
 
-from modules.base_step_visualization import (
-    format_tooltip_value as _shared_format_tooltip_value,
-    page_size as _shared_page_size,
-    safe_dimension as _shared_safe_dimension,
-    to_text as _shared_to_text,
-    tooltip_with_full_value as _shared_tooltip_with_full_value,
-    with_tooltip as _shared_with_tooltip,
-)
-from modules.base_view import last_n_chars
+from modules.key_exchange import step_visualization_common as shared_steps
 from modules.tooltip_helpers import get_tooltip_messages
 
 
 def _format_tooltip_value(value: Any, indent: int = 0) -> str:
-    return _shared_format_tooltip_value(value, indent)
+    return shared_steps.format_tooltip_value(value, indent)
 
 
 def _to_text(value: Any) -> str:
-    return _shared_to_text(value)
+    return shared_steps.to_text(value)
 
 
 def _preview(value: Any, limit: int = 28) -> str:
-    text = _to_text(value)
-    if len(text) <= limit:
-        return text
-    return f"{text[:limit]}..."
+    return shared_steps.preview(value, limit)
 
 
 def _last_key_chars(value: Any, count: int = 10) -> str:
-    text = _to_text(value)
-    if text in {"", "None", "-"}:
-        return text
-    return last_n_chars(text, count)
+    return shared_steps.last_key_chars(value, count)
 
 
 def _tooltip_with_full_value(message: str | None, full_value: Any = None) -> str | None:
-    return _shared_tooltip_with_full_value(message, full_value)
+    return shared_steps.tooltip_with_full_value(message, full_value)
 
 
 def _safe_dimension(value: Any, fallback: int) -> int:
-    return _shared_safe_dimension(value, fallback)
+    return shared_steps.safe_dimension(value, fallback)
 
 
 def _page_size(page: ft.Page) -> tuple[int, int]:
-    return _shared_page_size(page)
+    return shared_steps.page_size(page)
 
 
 def _with_tooltip(control: ft.Control, message: str | None, full_value: Any = None) -> ft.Control:
-    return _shared_with_tooltip(control, message, full_value)
+    return shared_steps.with_tooltip(control, message, full_value)
 
 
 def _flow_node(
@@ -63,26 +49,7 @@ def _flow_node(
     tooltip: str | None = None,
     full_value: Any = None,
 ) -> ft.Control:
-    controls = [ft.Text(label, weight="bold", text_align=ft.TextAlign.CENTER)]
-    if value:
-        controls.append(ft.Text(value, text_align=ft.TextAlign.CENTER))
-
-    node = ft.Container(
-        content=ft.Column(
-            controls=controls,
-            spacing=4,
-            tight=True,
-            expand=True,
-            alignment=ft.MainAxisAlignment.CENTER,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        width=width,
-        height=height,
-        padding=10,
-        border=ft.Border.all(),
-        border_radius=45 if circle else 8,
-    )
-    return _with_tooltip(node, tooltip, full_value)
+    return shared_steps.flow_node(label, value, circle, width, height, tooltip, full_value)
 
 
 def _state_row(
@@ -92,30 +59,7 @@ def _state_row(
     full_value: Any = None,
     highlight: bool = False,
 ) -> ft.Control:
-    row = ft.Row(
-        controls=[
-            ft.Text(f"{label}:", weight="bold"),
-            ft.Text(value, weight=ft.FontWeight.W_600 if highlight else None),
-        ],
-        spacing=8,
-        wrap=True,
-    )
-    if highlight:
-        row = ft.Row(
-            controls=[
-                ft.Container(
-                    content=row,
-                    padding=ft.Padding.symmetric(horizontal=6, vertical=2),
-                    border_radius=6,
-                    bgcolor=ft.Colors.PRIMARY_CONTAINER,
-                )
-            ]
-        )
-    return _with_tooltip(
-        ft.Container(content=row, padding=ft.Padding.symmetric(horizontal=4, vertical=2), border_radius=6),
-        tooltip,
-        full_value,
-    )
+    return shared_steps.state_row(label, value, tooltip, full_value, highlight)
 
 
 def _state_panel(
@@ -123,114 +67,11 @@ def _state_panel(
     rows: list[tuple[str, str, str | None, Any]],
     highlight_labels: set[str] | None = None,
 ) -> ft.Control:
-    highlighted = highlight_labels or set()
-    return ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Text(title, size=16, weight="bold"),
-                *[
-                    _state_row(label, value, row_tooltip, full_value, highlight=label in highlighted)
-                    for label, value, row_tooltip, full_value in rows
-                ],
-            ],
-            spacing=4,
-            tight=True,
-            horizontal_alignment=ft.CrossAxisAlignment.START,
-        ),
-        width=420,
-        padding=10,
-        border=ft.Border.all(),
-        border_radius=8,
-    )
+    return shared_steps.state_panel(title, rows, highlight_labels)
 
 
 def _show_step_dialog(page: ft.Page, dialog_title: str, steps: list[dict[str, Any]]) -> None:
-    resize_event_name = "on_resized" if hasattr(page, "on_resized") else "on_resize"
-    previous_resize_handler = getattr(page, resize_event_name, None)
-
-    current_step = {"index": 0}
-    progress_text = ft.Text()
-    step_container = ft.Container(width=620)
-
-    def apply_responsive_dialog_size() -> None:
-        page_width, page_height = _page_size(page)
-        content_width = max(620, min(980, int(page_width * 0.82)))
-        content_height = max(360, min(760, int(page_height * 0.72)))
-
-        dialog_content.width = content_width
-        dialog_content.height = content_height
-        step_container.width = max(520, content_width - 80)
-
-    def on_page_resized(e) -> None:
-        apply_responsive_dialog_size()
-        if callable(previous_resize_handler):
-            previous_resize_handler(e)
-        if dialog.open:
-            page.update()
-
-    def close_dialog(e) -> None:
-        dialog.open = False
-        if getattr(page, resize_event_name, None) == on_page_resized:
-            setattr(page, resize_event_name, previous_resize_handler)
-        page.update()
-
-    def render_current_step() -> None:
-        index = current_step["index"]
-        step = steps[index]
-        progress_text.value = f"Step {index + 1}/{len(steps)} - {step['title']}"
-        step_container.content = step["control"]
-        previous_button.disabled = index == 0
-        next_button.text = "Finish" if index == len(steps) - 1 else "Next"
-
-    def on_previous(e) -> None:
-        if current_step["index"] <= 0:
-            return
-        current_step["index"] -= 1
-        render_current_step()
-        page.update()
-
-    def on_next(e) -> None:
-        if current_step["index"] >= len(steps) - 1:
-            close_dialog(e)
-            return
-        current_step["index"] += 1
-        render_current_step()
-        page.update()
-
-    previous_button = ft.TextButton("Previous", on_click=on_previous)
-    next_button = ft.TextButton("Next", on_click=on_next)
-
-    dialog_content = ft.Container(
-        content=ft.Column(
-            controls=[
-                progress_text,
-                ft.Text("Click Next to continue to the following step."),
-                ft.Row(controls=[step_container], alignment=ft.MainAxisAlignment.CENTER),
-            ],
-            alignment=ft.MainAxisAlignment.CENTER,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            expand=True,
-            spacing=8,
-            scroll=ft.ScrollMode.ALWAYS,
-        ),
-        width=700,
-        height=460,
-    )
-
-    dialog = ft.AlertDialog(
-        modal=True,
-        title=ft.Text(dialog_title),
-        content=dialog_content,
-        actions=[previous_button, next_button, ft.TextButton("Close", on_click=close_dialog)],
-        actions_alignment=ft.MainAxisAlignment.END,
-    )
-
-    apply_responsive_dialog_size()
-    setattr(page, resize_event_name, on_page_resized)
-    render_current_step()
-    page.overlay.append(dialog)
-    dialog.open = True
-    page.update()
+    shared_steps.show_step_dialog(page, dialog_title, steps)
 
 
 def _opk_count(server_state: dict, key: str) -> int:
@@ -784,14 +625,7 @@ def _build_send_initial_message_steps(before_state: dict, after_state: dict, too
             ft.Text("↓", size=24),
             _flow_node("Transport", "Alice -> Bob", width=320, full_value=message, tooltip=tooltips.get("x3dh_step_node_transport", "")),
             ft.Divider(height=1),
-            _state_panel(
-                "Message state",
-                [
-                    ("Initial message (before)", str(isinstance(before_state.get("initial_message"), dict)), None, before_state.get("initial_message")),
-                    ("Initial message (after)", str(isinstance(after_state.get("initial_message"), dict)), None, after_state.get("initial_message")),
-                ],
-                highlight_labels={"Initial message (after)"},
-            ),
+            shared_steps.build_message_state_panel(before_state, after_state),
         ],
         spacing=8,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -851,25 +685,17 @@ def _build_bob_receives_steps(before_state: dict, after_state: dict, tooltips: d
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    step3 = ft.Column(
-        controls=[
-            ft.Text("3) Decrypt ciphertext", weight="bold"),
-            ft.Row(
-                controls=[
-                    _flow_node("Bob SK", _last_key_chars(result.get("bob_shared_secret", "-")), width=260, full_value=result.get("bob_shared_secret"), tooltip=tooltips.get("x3dh_step_key_sk", "")),
-                    _flow_node("Ciphertext", _last_key_chars(msg.get("ciphertext", "-")), width=260, full_value=msg.get("ciphertext"), tooltip=tooltips.get("x3dh_step_key_ciphertext", "")),
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                spacing=12,
-                wrap=True,
-            ),
-            ft.Text("↓", size=24),
-            _flow_node("DECRYPT", "Use Bob SK", circle=True, width=220, tooltip=tooltips.get("x3dh_step_node_decrypt", "")),
-            ft.Text("↓", size=24),
-            _flow_node("Plaintext (AD)", _last_key_chars(result.get("decrypted_text", "-")), width=520, full_value=result.get("decrypted_text"), tooltip=tooltips.get("x3dh_step_key_ad", "")),
-        ],
-        spacing=8,
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    step3 = shared_steps.build_decrypt_step(
+        step_text="3) Decrypt ciphertext",
+        key_label="Bob SK",
+        key_value=result.get("bob_shared_secret"),
+        ciphertext_value=msg.get("ciphertext"),
+        plaintext_label="Plaintext (AD)",
+        plaintext_value=result.get("decrypted_text"),
+        key_tooltip=tooltips.get("x3dh_step_key_sk", ""),
+        ciphertext_tooltip=tooltips.get("x3dh_step_key_ciphertext", ""),
+        plaintext_tooltip=tooltips.get("x3dh_step_key_ad", ""),
+        decrypt_tooltip=tooltips.get("x3dh_step_node_decrypt", ""),
     )
 
     step4 = ft.Column(
@@ -893,35 +719,24 @@ def _build_bob_receives_steps(before_state: dict, after_state: dict, tooltips: d
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    step5 = ft.Column(
-        controls=[
-            ft.Text("5) Compare AD with decrypted payload", weight="bold"),
-            ft.Row(
-                controls=[
-                    _flow_node("AD_local", _last_key_chars(result.get("ad_local", "-")), width=260, full_value=result.get("ad_local"), tooltip=tooltips.get("x3dh_step_key_ad", "")),
-                    _flow_node("Decrypted payload", _last_key_chars(result.get("decrypted_text", "-")), width=260, full_value=result.get("decrypted_text")),
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                spacing=12,
-                wrap=True,
-            ),
-            ft.Text("↓", size=24),
-            _flow_node("COMPARE", circle=True, width=200),
-            ft.Text("↓", size=24),
-            _flow_node("AD == plaintext", str(bool(result.get("payload_matches_ad", False))), width=320, full_value=result.get("payload_matches_ad")),
-        ],
-        spacing=8,
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    step5 = shared_steps.build_compare_values_step(
+        step_text="5) Compare AD with decrypted payload",
+        left_label="AD_local",
+        left_value=result.get("ad_local"),
+        right_label="Decrypted payload",
+        right_value=result.get("decrypted_text"),
+        result_label="AD == plaintext",
+        result_value=result.get("payload_matches_ad", False),
+        left_tooltip=tooltips.get("x3dh_step_key_ad", ""),
     )
 
-    step6 = ft.Column(
-        controls=[
-            ft.Text("6) Bob verification result", weight="bold"),
-            _state_panel("Bob result (after)", _bob_receive_result_rows(result, tooltips), highlight_labels={"AD_matches", "SK_matches", "Decrypt OK"}),
-            _state_panel("Bob local key state", _alice_local_rows(bob, tooltips)),
-        ],
-        spacing=8,
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    step6 = shared_steps.build_bob_summary_step(
+        step_text="6) Bob verification result",
+        result=result,
+        bob_local=bob,
+        tooltips=tooltips,
+        result_rows_builder=_bob_receive_result_rows,
+        local_rows_builder=_alice_local_rows,
     )
 
     return [
@@ -943,82 +758,6 @@ def _build_generate_alice_keys_steps(before_state: dict, after_state: dict, tool
     after_sig = (after_alice or {}).get("signed_prekey_signature", "-")
     after_opk_map = (after_alice or {}).get("opk_public_by_id", {}) if isinstance((after_alice or {}).get("opk_public_by_id"), dict) else {}
 
-    step1 = ft.Column(
-        controls=[
-            ft.Text("1) Show Alice current state", weight="bold"),
-            _state_panel("Alice local state (before)", _alice_local_rows(before_alice, tooltips)),
-            _state_panel("Server view (before)", _server_alice_rows(before_state.get("server_state"), tooltips)),
-        ],
-        spacing=8,
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-    )
-
-    step2 = ft.Column(
-        controls=[
-            ft.Text("2) Generate Identity keys", weight="bold"),
-            _flow_node(
-                "GENERATE_DH",
-                circle=True,
-                width=200,
-                tooltip=tooltips.get("x3dh_step_node_generate_dh", ""),
-            ),
-            ft.Text("↓", size=24),
-            ft.Row(
-                controls=[
-                    _flow_node("IK_pub", _last_key_chars(after_identity.get("public", "-")), width=240, full_value=after_identity.get("public"), tooltip=tooltips.get("x3dh_step_key_ik_pub", "")),
-                    _flow_node("IK_priv", _last_key_chars(after_identity.get("private", "-")), width=240, full_value=after_identity.get("private"), tooltip=tooltips.get("x3dh_step_key_ik_priv", "")),
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                spacing=20,
-            ),
-        ],
-        spacing=8,
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-    )
-
-    step3 = ft.Column(
-        controls=[
-            ft.Text("3) Generate Signed Prekey (SPK) keys", weight="bold"),
-            _flow_node(
-                "GENERATE_DH",
-                circle=True,
-                width=200,
-                tooltip=tooltips.get("x3dh_step_node_generate_dh", ""),
-            ),
-            ft.Text("↓", size=24),
-            ft.Row(
-                controls=[
-                    _flow_node("SPK_pub", _last_key_chars(after_spk.get("public", "-")), width=240, full_value=after_spk.get("public"), tooltip=tooltips.get("x3dh_step_key_spk_pub", "")),
-                    _flow_node("SPK_priv", _last_key_chars(after_spk.get("private", "-")), width=240, full_value=after_spk.get("private"), tooltip=tooltips.get("x3dh_step_key_spk_priv", "")),
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                spacing=20,
-            ),
-        ],
-        spacing=8,
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-    )
-
-    step4 = ft.Column(
-        controls=[
-            ft.Text("4) Sign SPK_pub using IK_priv", weight="bold"),
-            ft.Row(
-                controls=[
-                    _flow_node("IK_priv", _last_key_chars(after_identity.get("private", "-")), width=220, full_value=after_identity.get("private"), tooltip=tooltips.get("x3dh_step_key_ik_priv", "")),
-                    _flow_node("SPK_pub", _last_key_chars(after_spk.get("public", "-")), width=220, full_value=after_spk.get("public"), tooltip=tooltips.get("x3dh_step_key_spk_pub", "")),
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                spacing=18,
-            ),
-            ft.Text("↓", size=24),
-            _flow_node("SIGN", circle=True, width=200, tooltip=tooltips.get("x3dh_step_node_sign", "")),
-            ft.Text("↓", size=24),
-            _flow_node("SPK signature", _last_key_chars(after_sig), width=420, full_value=after_sig, tooltip=tooltips.get("x3dh_step_key_spk_sig", "")),
-        ],
-        spacing=8,
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-    )
-
     opk_count = len(after_opk_map)
     opk_keys = sorted(after_opk_map.keys(), key=lambda x: int(x) if str(x).isdigit() else x)
     first_opk_id = opk_keys[0] if opk_keys else "-"
@@ -1026,76 +765,27 @@ def _build_generate_alice_keys_steps(before_state: dict, after_state: dict, tool
     after_opk_priv_map = (after_alice or {}).get("opk_private_by_id", {}) if isinstance((after_alice or {}).get("opk_private_by_id"), dict) else {}
     first_opk_priv_entry = after_opk_priv_map.get(first_opk_id, {}) if first_opk_id != "-" else {}
     first_opk_priv = first_opk_priv_entry.get("private", "-") if isinstance(first_opk_priv_entry, dict) else "-"
-
-    loop_inner = ft.Stack(
-        controls=[
-            ft.Container(
-                border=ft.Border.all(),
-                border_radius=8,
-                padding=12,
-                content=ft.Column(
-                    controls=[
-                        _flow_node("GENERATE_DH", circle=True, width=200, height=70, tooltip=tooltips.get("x3dh_step_node_generate_dh", "")),
-                        ft.Text("↓", size=22),
-                        ft.Row(
-                            controls=[
-                                _flow_node(
-                                    "OPK_pub",
-                                    _last_key_chars(first_opk_pub),
-                                    width=220,
-                                    height=80,
-                                    full_value=first_opk_pub,
-                                    tooltip=tooltips.get("x3dh_step_key_opk_pub", ""),
-                                ),
-                                _flow_node(
-                                    "OPK_priv",
-                                    _last_key_chars(first_opk_priv),
-                                    width=220,
-                                    height=80,
-                                    full_value=first_opk_priv,
-                                    tooltip=tooltips.get("x3dh_step_key_opk_priv", ""),
-                                ),
-                            ],
-                            alignment=ft.MainAxisAlignment.CENTER,
-                            spacing=18,
-                        ),
-                        ft.Text("↓", size=22),
-                        _flow_node("ID", "id = i", width=180, height=70),
-                    ],
-                    spacing=6,
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
-            ),
-            ft.Container(
-                left=8,
-                top=8,
-                padding=ft.Padding.symmetric(horizontal=6, vertical=2),
-                border=ft.Border.all(),
-                border_radius=4,
-                bgcolor=ft.Colors.SURFACE,
-                content=ft.Text("loop", size=11, weight="bold"),
-            ),
-        ]
+    return shared_steps.build_generate_alice_core_steps(
+        before_alice_rows=_alice_local_rows(before_alice, tooltips),
+        before_server_rows=_server_alice_rows(before_state.get("server_state"), tooltips),
+        before_alice_panel_title="Alice local state (before)",
+        before_server_panel_title="Server view (before)",
+        pre_state_text="1) Show Alice current state",
+        ik_public=after_identity.get("public", "-"),
+        ik_private=after_identity.get("private", "-"),
+        spk_public=after_spk.get("public", "-"),
+        spk_private=after_spk.get("private", "-"),
+        spk_signature=after_sig,
+        opk_count=opk_count,
+        opk_keys=opk_keys,
+        first_opk_pub=first_opk_pub,
+        first_opk_priv=first_opk_priv,
+        first_opk_id=first_opk_id,
+        sign_output_label="SPK signature",
+        opk_id_label="ID",
+        opk_id_value="id = i",
+        tooltips=tooltips,
     )
-    loop_inner = _with_tooltip(loop_inner, tooltips.get("x3dh_step_node_loop", ""))
-
-    step5 = ft.Column(
-        controls=[
-            ft.Text("5) Generate OPK keys", weight="bold"),
-            loop_inner,
-            _flow_node("Result", f"OPK set generated: {opk_count} keys", width=360, height=90, full_value=opk_keys),
-        ],
-        spacing=8,
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-    )
-
-    return [
-        {"title": "Show current state", "control": step1},
-        {"title": "Generate IK", "control": step2},
-        {"title": "Generate SPK", "control": step3},
-        {"title": "Sign SPK", "control": step4},
-        {"title": "Generate OPKs", "control": step5},
-    ]
 
 
 def _build_upload_initial_bundle_steps(before_state: dict, after_state: dict, tooltips: dict[str, str]) -> list[dict[str, Any]]:

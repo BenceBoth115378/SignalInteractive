@@ -4,6 +4,7 @@ Shared cryptographic helpers used by protocol modules.
 This module centralizes the external cryptographic primitives used by:
 - Double Ratchet
 - X3DH
+- PQXDH
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from Crypto.Protocol.DH import key_agreement
 from Crypto.PublicKey import ECC
 from Crypto.Random import get_random_bytes
 from Crypto.Signature import eddsa
+from pqcrypto.kem import ml_kem_1024
 
 from components.data_classes import DHKeyPair, Header
 
@@ -197,8 +199,49 @@ def VERIFY(public_pem: str, message: bytes, signature_hex: str) -> bool:
         return False
 
 
+def GENERATE_PQKEM_KEYPAIR() -> dict[str, str]:
+    public_bytes, private_bytes = ml_kem_1024.generate_keypair()
+    return {
+        "private": private_bytes.hex(),
+        "public": public_bytes.hex(),
+    }
+
+
+def PQKEM_ENCAPSULATE(pq_public_hex: str) -> tuple[str, bytes]:
+    if not isinstance(pq_public_hex, str):
+        raise ValueError("Invalid PQ public key")
+
+    try:
+        public_bytes = bytes.fromhex(pq_public_hex)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid PQ public key encoding") from exc
+
+    kem_ciphertext, shared_secret = ml_kem_1024.encrypt(public_bytes)
+    return kem_ciphertext.hex(), shared_secret
+
+
+def PQKEM_DECAPSULATE(pq_private_hex: str, kem_ciphertext_hex: str) -> bytes:
+    if not isinstance(pq_private_hex, str):
+        raise ValueError("Invalid PQ private key")
+    if not isinstance(kem_ciphertext_hex, str):
+        raise ValueError("Invalid KEM ciphertext")
+
+    try:
+        private_bytes = bytes.fromhex(pq_private_hex)
+        kem_ciphertext = bytes.fromhex(kem_ciphertext_hex)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid PQ key or ciphertext encoding") from exc
+
+    return ml_kem_1024.decrypt(private_bytes, kem_ciphertext)
+
+
 def KDF_SK(dh_values: list[bytes]) -> bytes:
     joined = b"X3DH|" + b"|".join(dh_values)
+    return _hash_to_32_bytes(joined + b"|SK")
+
+
+def KDF_SK_PQXDH(secret_values: list[bytes]) -> bytes:
+    joined = b"PQXDH|" + b"|".join(secret_values)
     return _hash_to_32_bytes(joined + b"|SK")
 
 

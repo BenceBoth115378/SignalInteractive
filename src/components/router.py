@@ -1,4 +1,5 @@
 from modules.messaging.double_ratchet.module import DoubleRatchetModule
+from modules.key_exchange.pqxdh.module import PQXDHModule
 from modules.key_exchange.x3dh.module import X3DHModule
 
 
@@ -7,6 +8,7 @@ class Router:
     def __init__(self):
         self.modules = {
             "double_ratchet": DoubleRatchetModule(),
+            "pqxdh": PQXDHModule(),
             "x3dh": X3DHModule(),
         }
         self.module_cards = {
@@ -21,6 +23,12 @@ class Router:
                 "title": "X3DH",
                 "subtitle": "Session bootstrap",
                 "description": "Three-phase model of registration, prekey-bundle processing, and initial message establishment with SK and AD checks.",
+            },
+            "pqxdh": {
+                "id": "pqxdh",
+                "title": "PQXDH",
+                "subtitle": "Post-quantum session bootstrap",
+                "description": "X3DH-style flow extended with signed PQ prekeys and KEM-derived shared secret contribution.",
             },
         }
 

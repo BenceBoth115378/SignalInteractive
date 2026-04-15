@@ -1,6 +1,6 @@
 import flet as ft
 
-DESIRED_ORDER = ["x3dh", "pqxdh", "double ratchet", "spqr", "triple ratchet"]
+DESIRED_ORDER = ["x3dh", "pqxdh", "double_ratchet", "spqr", "triple_ratchet"]
 
 
 def module_sort_key(module):
