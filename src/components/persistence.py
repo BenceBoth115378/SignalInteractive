@@ -262,6 +262,13 @@ class ModuleStatePersistence:
             self.page.update()
             return
 
+        if not self.app_state.current_module:
+            self.app_state.current_module = module_id
+            self.app_state.perspective = saved_perspective
+            self.set_status(f"Loaded module state for '{module_id}'.")
+            self.refresh_callback()
+            return
+
         if self.app_state.current_module == module_id:
             self.app_state.perspective = saved_perspective
 
