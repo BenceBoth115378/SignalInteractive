@@ -1,2 +1,3 @@
 flet>=0.80.5
 pycryptodome>=3.20.0
+pqcrypto>=0.4.0
