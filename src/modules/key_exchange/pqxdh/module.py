@@ -20,8 +20,10 @@ from modules.key_exchange.pqxdh.logic import (
     is_phase2_done,
     new_state,
     request_bob_bundle_for_alice,
-    server_sends_alice_opk_to_requester,
-    server_sends_bob_opk_to_requester,
+    server_sends_alice_ec_opk_to_requester,
+    server_sends_alice_pqopk_to_requester,
+    server_sends_bob_ec_opk_to_requester,
+    server_sends_bob_pqopk_to_requester,
     upload_alice_initial_bundle,
 )
 from modules.key_exchange.pqxdh.step_visualization import show_pqxdh_action_step_visualization_dialog
@@ -79,11 +81,17 @@ class PQXDHModule(KeyExchangeBaseModule):
     def _upload_alice_initial_bundle(self) -> None:
         upload_alice_initial_bundle(self.state)
 
-    def _server_sends_alice_opk_to_requester(self) -> None:
-        server_sends_alice_opk_to_requester(self.state)
+    def _server_sends_alice_ec_opk_to_requester(self) -> None:
+        server_sends_alice_ec_opk_to_requester(self.state)
 
-    def _server_sends_bob_opk_to_requester(self) -> None:
-        server_sends_bob_opk_to_requester(self.state)
+    def _server_sends_alice_pqopk_to_requester(self) -> None:
+        server_sends_alice_pqopk_to_requester(self.state)
+
+    def _server_sends_bob_ec_opk_to_requester(self) -> None:
+        server_sends_bob_ec_opk_to_requester(self.state)
+
+    def _server_sends_bob_pqopk_to_requester(self) -> None:
+        server_sends_bob_pqopk_to_requester(self.state)
 
     def _alice_uploads_new_opk(self) -> None:
         alice_uploads_new_opk(self.state)
@@ -199,18 +207,32 @@ class PQXDHModule(KeyExchangeBaseModule):
                 "upload_alice_initial_bundle",
             )
 
-        def on_server_send_alice_opk(e):
+        def on_server_send_alice_ec_opk(e):
             _run(
-                self._server_sends_alice_opk_to_requester,
-                "Server sent one Alice OPK/PQOPK pair to requester.",
-                "server_sends_alice_opk_to_requester",
+                self._server_sends_alice_ec_opk_to_requester,
+                "Server sent one Alice EC OPK to requester.",
+                "server_sends_alice_ec_opk_to_requester",
             )
 
-        def on_server_send_bob_opk(e):
+        def on_server_send_alice_pqopk(e):
             _run(
-                self._server_sends_bob_opk_to_requester,
-                "Server sent one Bob OPK/PQOPK pair to requester.",
-                "server_sends_bob_opk_to_requester",
+                self._server_sends_alice_pqopk_to_requester,
+                "Server sent one Alice PQOPK to requester.",
+                "server_sends_alice_pqopk_to_requester",
+            )
+
+        def on_server_send_bob_ec_opk(e):
+            _run(
+                self._server_sends_bob_ec_opk_to_requester,
+                "Server sent one Bob EC OPK to requester.",
+                "server_sends_bob_ec_opk_to_requester",
+            )
+
+        def on_server_send_bob_pqopk(e):
+            _run(
+                self._server_sends_bob_pqopk_to_requester,
+                "Server sent one Bob PQOPK to requester.",
+                "server_sends_bob_pqopk_to_requester",
             )
 
         def on_alice_upload_new_opk(e):
@@ -281,8 +303,10 @@ class PQXDHModule(KeyExchangeBaseModule):
                 phase2_message_input,
                 on_generate_alice,
                 on_upload_alice_bundle,
-                on_server_send_alice_opk,
-                on_server_send_bob_opk,
+                on_server_send_alice_ec_opk,
+                on_server_send_alice_pqopk,
+                on_server_send_bob_ec_opk,
+                on_server_send_bob_pqopk,
                 on_alice_upload_new_opk,
                 on_alice_rotate_spk,
                 on_request_bob_bundle,

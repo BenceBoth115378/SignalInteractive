@@ -45,6 +45,14 @@ def add_event(state: PQXDHState, message: str) -> None:
     state.events.append(message)
 
 
+def _update_alice_upload_opk_flag(state: PQXDHState, server_state: dict) -> None:
+    remaining_min = min(
+        len(server_state.get("alice_available_opk_ids", [])),
+        len(server_state.get("alice_pq_available_opk_ids", [])),
+    )
+    state.alice_needs_to_upload_opk = remaining_min < 3
+
+
 def ensure_alice_local(state: PQXDHState) -> dict:
     alice = state.alice_local
     if not isinstance(alice, dict):
@@ -223,53 +231,60 @@ def upload_alice_initial_bundle(state: PQXDHState) -> None:
     add_event(state, "Alice uploaded initial PQXDH prekey bundle, OPKs, and PQOPKs to Server.")
 
 
-def server_sends_alice_opk_to_requester(state: PQXDHState) -> None:
+def server_sends_alice_ec_opk_to_requester(state: PQXDHState) -> None:
     server_state = _ensure_server_state(state)
-
     ec_available = server_state.get("alice_available_opk_ids", [])
+
+    if not ec_available:
+        add_event(state, "Server could not send Alice EC OPK to requester because none are available.")
+        raise ValueError("No Alice EC OPK is currently available on server.")
+
+    ec_id = ec_available.pop(0)
+    server_state["alice_opk_public_by_id"].pop(str(ec_id), None)
+    add_event(state, f"Server sent Alice EC OPK id={ec_id} to a requester.")
+
+    _update_alice_upload_opk_flag(state, server_state)
+
+
+def server_sends_alice_pqopk_to_requester(state: PQXDHState) -> None:
+    server_state = _ensure_server_state(state)
     pq_available = server_state.get("alice_pq_available_opk_ids", [])
 
-    if not ec_available and not pq_available:
-        add_event(state, "Server could not send Alice OPK/PQOPK to requester because none are available.")
-        raise ValueError("No Alice OPK or PQOPK is currently available on server.")
+    if not pq_available:
+        add_event(state, "Server could not send Alice PQOPK to requester because none are available.")
+        raise ValueError("No Alice PQOPK is currently available on server.")
 
-    if ec_available:
-        ec_id = ec_available.pop(0)
-        server_state["alice_opk_public_by_id"].pop(str(ec_id), None)
-        add_event(state, f"Server sent Alice EC OPK id={ec_id} to a requester.")
+    pq_id = pq_available.pop(0)
+    server_state["alice_pq_opk_public_by_id"].pop(str(pq_id), None)
+    add_event(state, f"Server sent Alice PQOPK id={pq_id} to a requester.")
 
-    if pq_available:
-        pq_id = pq_available.pop(0)
-        server_state["alice_pq_opk_public_by_id"].pop(str(pq_id), None)
-        add_event(state, f"Server sent Alice PQOPK id={pq_id} to a requester.")
-
-    remaining_min = min(
-        len(server_state.get("alice_available_opk_ids", [])),
-        len(server_state.get("alice_pq_available_opk_ids", [])),
-    )
-    if remaining_min < 3:
-        state.alice_needs_to_upload_opk = True
+    _update_alice_upload_opk_flag(state, server_state)
 
 
-def server_sends_bob_opk_to_requester(state: PQXDHState) -> None:
+def server_sends_bob_ec_opk_to_requester(state: PQXDHState) -> None:
     server_state = _ensure_server_state(state)
-
     ec_available = server_state.get("bob_available_opk_ids", [])
+
+    if not ec_available:
+        add_event(state, "Server could not send Bob EC OPK to requester because none are available.")
+        raise ValueError("No Bob EC OPK is currently available on server.")
+
+    ec_id = ec_available.pop(0)
+    server_state["bob_opk_public_by_id"].pop(str(ec_id), None)
+    add_event(state, f"Server sent Bob EC OPK id={ec_id} to a requester.")
+
+
+def server_sends_bob_pqopk_to_requester(state: PQXDHState) -> None:
+    server_state = _ensure_server_state(state)
     pq_available = server_state.get("bob_pq_available_opk_ids", [])
 
-    if not ec_available and not pq_available:
-        add_event(state, "Server could not send Bob OPK/PQOPK to requester because none are available.")
-        raise ValueError("No Bob OPK or PQOPK is currently available on server.")
+    if not pq_available:
+        add_event(state, "Server could not send Bob PQOPK to requester because none are available.")
+        raise ValueError("No Bob PQOPK is currently available on server.")
 
-    if ec_available:
-        ec_id = ec_available.pop(0)
-        server_state["bob_opk_public_by_id"].pop(str(ec_id), None)
-        add_event(state, f"Server sent Bob OPK id={ec_id} to a requester.")
-
-    if pq_available:
-        pq_id = pq_available.pop(0)
-        server_state["bob_pq_opk_public_by_id"].pop(str(pq_id), None)
-        add_event(state, f"Server sent Bob PQOPK id={pq_id} to a requester.")
+    pq_id = pq_available.pop(0)
+    server_state["bob_pq_opk_public_by_id"].pop(str(pq_id), None)
+    add_event(state, f"Server sent Bob PQOPK id={pq_id} to a requester.")
 
 
 def alice_uploads_new_opk(state: PQXDHState) -> None:
@@ -365,6 +380,7 @@ def request_bob_bundle_for_alice(state: PQXDHState) -> None:
 
     selected_pq_public = pq_opk_public or bob_bundle.get("pq_signed_prekey_public")
     selected_pq_signature = pq_opk_signature or bob_bundle.get("pq_signed_prekey_signature")
+    pq_prekey_source = "pqopk" if pq_opk_public is not None else "pqspk"
 
     state.last_bundle_for_alice = {
         "identity_dh_public": bob_bundle["identity_dh_public"],
@@ -384,6 +400,7 @@ def request_bob_bundle_for_alice(state: PQXDHState) -> None:
         "pq_prekey_public": selected_pq_public,
         "pq_prekey_signature": selected_pq_signature,
         "pq_is_last_resort": pq_opk_public is None,
+        "pq_prekey_source": pq_prekey_source,
     }
 
     suffix_parts = ["with EC OPK" if opk_public else "without EC OPK"]
@@ -450,6 +467,8 @@ def alice_generates_ek_and_derives_sk(state: PQXDHState) -> None:
     if not isinstance(pq_prekey_public, str) or not pq_prekey_public:
         raise ValueError("PQ prekey public value is missing.")
 
+    pq_key_type = "PQSPK" if bool(bundle.get("pq_is_last_resort", False)) else "PQOPK"
+
     ek = _generate_dh_key_pair()
     alice["ephemeral_key"] = ek
 
@@ -475,10 +494,11 @@ def alice_generates_ek_and_derives_sk(state: PQXDHState) -> None:
         "ek_private": ek["private"],
         "kem_ciphertext": kem_ciphertext,
         "pq_secret": pq_secret.hex(),
+        "pq_prekey_type": pq_key_type,
     }
 
     state.phase2_ek_generated = True
-    add_event(state, f"Alice derived PQXDH SK with {len(dh_outputs)} DH operation(s) and 1 PQKEM secret.")
+    add_event(state, f"Alice derived PQXDH SK using {pq_key_type} with {len(dh_outputs)} DH operation(s) and 1 PQKEM secret.")
 
 
 def alice_calculates_associated_data(state: PQXDHState) -> None:
@@ -526,6 +546,7 @@ def alice_sends_initial_message(state: PQXDHState, plaintext: str) -> None:
         "bob_spk_public": bundle["signed_prekey_public"],
         "bob_opk_id": bundle.get("opk_id"),
         "bob_pq_prekey_id": bundle.get("pq_opk_id", bundle.get("pq_prekey_id")),
+        "bob_pq_prekey_source": bundle.get("pq_prekey_source", "pqspk"),
         "pq_ciphertext": kem_ciphertext,
         "pq_is_last_resort": bool(bundle.get("pq_is_last_resort", False)),
     }
@@ -539,6 +560,7 @@ def alice_sends_initial_message(state: PQXDHState, plaintext: str) -> None:
         "bob_spk_public": header["bob_spk_public"],
         "bob_opk_id": header["bob_opk_id"],
         "bob_pq_prekey_id": header["bob_pq_prekey_id"],
+        "bob_pq_prekey_source": header["bob_pq_prekey_source"],
         "pq_ciphertext": header["pq_ciphertext"],
         "pq_is_last_resort": header["pq_is_last_resort"],
         "ciphertext": ciphertext,
@@ -580,6 +602,8 @@ def bob_receives_and_verifies(state: PQXDHState) -> None:
         dh_values.append(ext.DH(opk_private_entry, ek_a_public))
 
     pq_key_id = header.get("bob_pq_prekey_id", msg.get("bob_pq_prekey_id"))
+    pq_is_last_resort = bool(header.get("pq_is_last_resort", msg.get("pq_is_last_resort", False)))
+    used_pq_prekey_type = "PQSPK" if pq_is_last_resort else "PQOPK"
     pq_private_entry = None
     if pq_key_id is not None:
         pq_private_entry = bob.get("pq_opk_private_by_id", {}).pop(str(pq_key_id), None)
@@ -622,6 +646,7 @@ def bob_receives_and_verifies(state: PQXDHState) -> None:
     state.bob_receive_result = {
         "used_opk_id": opk_id,
         "used_pq_prekey_id": pq_key_id,
+        "used_pq_prekey_type": used_pq_prekey_type,
         "ad_local": bob_associated_data,
         "ad_matches": ad_matches,
         "payload_matches_ad": payload_matches_ad,
