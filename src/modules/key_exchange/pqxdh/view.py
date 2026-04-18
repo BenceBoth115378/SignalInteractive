@@ -222,8 +222,10 @@ def _phase1_container(
     state: dict[str, Any],
     on_generate_alice,
     on_upload_alice_bundle,
-    on_server_send_alice_opk,
-    on_server_send_bob_opk,
+    on_server_send_alice_ec_opk,
+    on_server_send_alice_pqopk,
+    on_server_send_bob_ec_opk,
+    on_server_send_bob_pqopk,
     on_alice_upload_new_opk,
     on_alice_rotate_spk,
     alice_needs_to_upload_opk: bool = False,
@@ -280,13 +282,34 @@ def _phase1_container(
                 ft.Text("Server Actions", weight=ft.FontWeight.BOLD),
                 ft.Row([
                     ft.Button(
-                        "Send 1 Alice OPK/PQOPK to another requester",
-                        on_click=on_server_send_alice_opk,
+                        "Send 1 Alice EC OPK to another requester",
+                        on_click=on_server_send_alice_ec_opk,
                         expand=True,
                         disabled=(not alice_generated) or (not alice_registered),
                     )
                 ]),
-                ft.Row([ft.Button("Send 1 Bob OPK/PQOPK to another requester", on_click=on_server_send_bob_opk, expand=True)]),
+                ft.Row([
+                    ft.Button(
+                        "Send 1 Alice PQOPK to another requester",
+                        on_click=on_server_send_alice_pqopk,
+                        expand=True,
+                        disabled=(not alice_generated) or (not alice_registered),
+                    )
+                ]),
+                ft.Row([
+                    ft.Button(
+                        "Send 1 Bob EC OPK to another requester",
+                        on_click=on_server_send_bob_ec_opk,
+                        expand=True,
+                    )
+                ]),
+                ft.Row([
+                    ft.Button(
+                        "Send 1 Bob PQOPK to another requester",
+                        on_click=on_server_send_bob_pqopk,
+                        expand=True,
+                    )
+                ]),
             ],
             spacing=8,
         ),
@@ -330,6 +353,10 @@ def _phase2_container(
     pq_bundle_status = "not requested"
     if isinstance(bundle, dict):
         pq_bundle_status = "with PQOPK" if bundle.get("pq_prekey_id") is not None and not bundle.get("pq_is_last_resort") else "with PQSPK"
+
+    pq_key_used = "-"
+    if isinstance(bundle, dict):
+        pq_key_used = "PQSPK (last-resort)" if bundle.get("pq_is_last_resort") else "PQOPK"
 
     sk_preview = "-"
     ad_preview = "-"
@@ -385,6 +412,7 @@ def _phase2_container(
         controls=[
             build_tooltip_text("bob_bundle_status", bundle_status, tooltips.get("phase2_bob_bundle_status", "")),
             build_tooltip_text("bob_pq_bundle_status", pq_bundle_status, tooltips.get("phase2_bob_pq_bundle_status", "")),
+            build_tooltip_text("pq_key_used", pq_key_used, tooltips.get("phase2_pq_key_used", "")),
             build_tooltip_text(
                 "shared_secret_preview",
                 sk_preview,
@@ -495,6 +523,11 @@ def _container(
                     tooltips.get("pq_secret_included", ""),
                 ),
                 build_tooltip_text(
+                    "used_pq_prekey_type",
+                    str(bob_result.get("used_pq_prekey_type", "-")),
+                    tooltips.get("used_pq_prekey_type", ""),
+                ),
+                build_tooltip_text(
                     "decrypted_text",
                     _short(str(bob_result.get("decrypted_text", "-")), 24),
                     tooltips.get("decrypted_text", ""),
@@ -538,8 +571,10 @@ def build_visual(
     phase2_message_input: ft.TextField,
     on_generate_alice,
     on_upload_alice_bundle,
-    on_server_send_alice_opk,
-    on_server_send_bob_opk,
+    on_server_send_alice_ec_opk,
+    on_server_send_alice_pqopk,
+    on_server_send_bob_ec_opk,
+    on_server_send_bob_pqopk,
     on_alice_upload_new_opk,
     on_alice_rotate_spk,
     on_request_bob_bundle,
@@ -582,8 +617,10 @@ def build_visual(
             state,
             on_generate_alice,
             on_upload_alice_bundle,
-            on_server_send_alice_opk,
-            on_server_send_bob_opk,
+            on_server_send_alice_ec_opk,
+            on_server_send_alice_pqopk,
+            on_server_send_bob_ec_opk,
+            on_server_send_bob_pqopk,
             on_alice_upload_new_opk,
             on_alice_rotate_spk,
             alice_needs_to_upload_opk=state.get("alice_needs_to_upload_opk", False),

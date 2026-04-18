@@ -87,12 +87,15 @@ def _bundle_for_alice_rows_with_pq(bundle: dict | None, tooltips: dict[str, str]
     if not isinstance(bundle, dict):
         return base_rows
 
+    pq_key_type = "PQSPK" if bool(bundle.get("pq_is_last_resort", False)) else "PQOPK"
+
     return base_rows + [
         ("PQSPK_pub", _last_key_chars(bundle.get("pq_signed_prekey_public", "-")), tooltips.get("pqxdh_step_key_pqspk_pub", ""), bundle.get("pq_signed_prekey_public")),
         ("PQSPK_sig", _last_key_chars(bundle.get("pq_signed_prekey_signature", "-")), tooltips.get("pqxdh_step_key_pqspk_sig", ""), bundle.get("pq_signed_prekey_signature")),
         ("PQPKB_id", str(bundle.get("pq_pkb_id", bundle.get("pq_opk_id", "-"))), tooltips.get("pqxdh_step_key_id_kem", ""), bundle.get("pq_pkb_id", bundle.get("pq_opk_id"))),
         ("PQPKB_pub", _last_key_chars(bundle.get("pq_pkb_public", bundle.get("pq_opk_public", "-"))), tooltips.get("pqxdh_step_key_pqpkb_pub", ""), bundle.get("pq_pkb_public", bundle.get("pq_opk_public"))),
         ("PQPKB_sig", _last_key_chars(bundle.get("pq_pkb_signature", bundle.get("pq_opk_signature", "-"))), tooltips.get("pqxdh_step_key_pqpkb_sig", ""), bundle.get("pq_pkb_signature", bundle.get("pq_opk_signature"))),
+        ("PQ_key_type", pq_key_type, tooltips.get("used_pq_prekey_type", ""), pq_key_type),
         ("PQ_is_last_resort", str(bool(bundle.get("pq_is_last_resort", False))), tooltips.get("pqxdh_step_state_pq_is_last_resort", ""), bundle.get("pq_is_last_resort")),
     ]
 
@@ -109,6 +112,7 @@ def _build_request_bob_bundle_steps_pqxdh(before_state: dict, after_state: dict,
     pq_pkb_id = after_bundle.get("pq_pkb_id") if isinstance(after_bundle, dict) else None
     pq_pkb_pub = after_bundle.get("pq_pkb_public") if isinstance(after_bundle, dict) else None
     pq_pkb_sig = after_bundle.get("pq_pkb_signature") if isinstance(after_bundle, dict) else None
+    pq_key_type = "PQSPK" if bool(after_bundle.get("pq_is_last_resort", False)) else "PQOPK"
 
     input_controls: list[ft.Control] = [
         _flow_node("IK_B_pub", _last_key_chars(after_bundle.get("identity_dh_public", "-")), width=220, full_value=after_bundle.get("identity_dh_public"), tooltip=tooltips.get("x3dh_step_key_ik_pub", "")),
@@ -159,6 +163,7 @@ def _build_request_bob_bundle_steps_pqxdh(before_state: dict, after_state: dict,
                     _flow_node("Output: Bob bundle", "cached in last_bundle_for_alice", width=280, height=90, full_value=after_bundle),
                     _flow_node("Output: EC OPK id", str(opk_id if opk_id is not None else "-"), width=220, height=90, full_value=opk_id),
                     _flow_node("Output: PQPKB id", str(pq_pkb_id if pq_pkb_id is not None else pq_opk_id if pq_opk_id is not None else "-"), width=220, height=90, full_value=pq_pkb_id if pq_pkb_id is not None else pq_opk_id),
+                    _flow_node("Output: PQ key type", pq_key_type, width=220, height=90, full_value=pq_key_type),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 spacing=16,
@@ -284,6 +289,9 @@ def _build_generate_ek_and_sk_steps_pqxdh(before_state: dict, after_state: dict,
     sk = derived.get("shared_secret", "-")
     pq_ct = derived.get("kem_ciphertext", "-")
     pq_ss = derived.get("pq_secret", "-")
+    pq_key_type = derived.get("pq_prekey_type") if isinstance(derived.get("pq_prekey_type"), str) else None
+    if not pq_key_type:
+        pq_key_type = "PQSPK" if bool(bundle.get("pq_is_last_resort", False)) else "PQOPK"
 
     step1 = ft.Column(
         controls=[
@@ -318,8 +326,16 @@ def _build_generate_ek_and_sk_steps_pqxdh(before_state: dict, after_state: dict,
 
     step3 = ft.Column(
         controls=[
-            ft.Text("3) PQKEM-ENC with Bob's selected PQPKB", weight="bold"),
-            _flow_node("PQPKB_pub", _last_key_chars(pq_pkb_pub), width=300, full_value=pq_pkb_pub, tooltip=tooltips.get("pqxdh_step_key_pqpkb_pub", "")),
+            ft.Text(f"3) PQKEM-ENC with Bob's selected PQPKB ({pq_key_type})", weight="bold"),
+            ft.Row(
+                controls=[
+                    _flow_node("PQPKB_pub", _last_key_chars(pq_pkb_pub), width=300, full_value=pq_pkb_pub, tooltip=tooltips.get("pqxdh_step_key_pqpkb_pub", "")),
+                    _flow_node("PQ key type", pq_key_type, width=220, full_value=pq_key_type, tooltip=tooltips.get("used_pq_prekey_type", "")),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=12,
+                wrap=True,
+            ),
             ft.Text("↓", size=24),
             _flow_node("PQKEM-ENC", circle=True, width=200, tooltip=tooltips.get("pqxdh_step_node_pqkem_enc", "")),
             ft.Text("↓", size=24),
@@ -435,6 +451,9 @@ def _build_send_initial_message_steps_pqxdh(
     bob_spk_public = header.get("bob_spk_public", message.get("bob_spk_public", "-"))
     bob_opk_id = header.get("bob_opk_id", message.get("bob_opk_id", "-"))
     bob_pq_pkb_id = header.get("bob_pq_prekey_id", message.get("bob_pq_prekey_id", "-"))
+    bob_pq_prekey_source = header.get("bob_pq_prekey_source", message.get("bob_pq_prekey_source"))
+    pq_is_last_resort = bool(header.get("pq_is_last_resort", message.get("pq_is_last_resort", False)))
+    pq_key_type = "PQSPK" if pq_is_last_resort or bob_pq_prekey_source == "pqspk" else "PQOPK"
 
     step1 = ft.Column(
         controls=[
@@ -454,6 +473,7 @@ def _build_send_initial_message_steps_pqxdh(
                     _flow_node("Bob_SPK_pub", _last_key_chars(bob_spk_public), width=220, full_value=bob_spk_public, tooltip=tooltips.get("x3dh_step_key_spk_pub", "")),
                     _flow_node("IdEC(OPKB)", str(bob_opk_id), width=220, full_value=bob_opk_id, tooltip=tooltips.get("pqxdh_step_key_id_ec", "")),
                     _flow_node("IdKEM(PQPKB)", str(bob_pq_pkb_id), width=220, full_value=bob_pq_pkb_id, tooltip=tooltips.get("pqxdh_step_key_id_kem", "")),
+                    _flow_node("PQ key type", pq_key_type, width=220, full_value=pq_key_type, tooltip=tooltips.get("used_pq_prekey_type", "")),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 spacing=12,
@@ -528,6 +548,9 @@ def _build_bob_receives_steps_pqxdh(before_state: dict, after_state: dict, toolt
     bob_spk_public = header.get("bob_spk_public", msg.get("bob_spk_public", "-"))
     bob_opk_id = header.get("bob_opk_id", msg.get("bob_opk_id"))
     pq_ciphertext = header.get("pq_ciphertext", msg.get("pq_ciphertext", "-"))
+    pq_key_type = result.get("used_pq_prekey_type")
+    if not isinstance(pq_key_type, str) or not pq_key_type:
+        pq_key_type = "PQSPK" if bool(header.get("pq_is_last_resort", msg.get("pq_is_last_resort", False))) else "PQOPK"
     ik_b_public = (bob.get("identity_dh") or {}).get("public", "-") if isinstance(bob.get("identity_dh"), dict) else "-"
 
     step1 = ft.Column(
@@ -554,6 +577,7 @@ def _build_bob_receives_steps_pqxdh(before_state: dict, after_state: dict, toolt
                 controls=[
                     _flow_node("PQPKB_priv", "cached from bundle request", width=300, full_value=result.get("pq_pkb_private"), tooltip=tooltips.get("pqxdh_step_key_pqpkb_priv", "")),
                     _flow_node("CT", _last_key_chars(pq_ciphertext), width=260, full_value=pq_ciphertext, tooltip=tooltips.get("pqxdh_step_key_ct", "")),
+                    _flow_node("PQ key type", pq_key_type, width=220, full_value=pq_key_type, tooltip=tooltips.get("used_pq_prekey_type", "")),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 spacing=14,
@@ -1205,8 +1229,15 @@ def _build_upload_new_spk_steps_pqxdh(before_state: dict, after_state: dict, too
 
 
 def _action_title(action_name: str) -> str:
-    if action_name == "generate_alice_registration_material":
-        return "Generate Alice keys"
+    titles = {
+        "generate_alice_registration_material": "Generate Alice keys",
+        "server_sends_alice_ec_opk_to_requester": "Server sends Alice EC OPK",
+        "server_sends_alice_pqopk_to_requester": "Server sends Alice PQOPK",
+        "server_sends_bob_ec_opk_to_requester": "Server sends Bob EC OPK",
+        "server_sends_bob_pqopk_to_requester": "Server sends Bob PQOPK",
+    }
+    if action_name in titles:
+        return titles[action_name]
     return x3dh_steps._action_title(action_name)
 
 
