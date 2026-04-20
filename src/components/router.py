@@ -1,4 +1,5 @@
-from modules.messaging.double_ratchet.module import DoubleRatchetModule
+﻿from modules.messaging.double_ratchet.module import DoubleRatchetModule
+from modules.messaging.spqr.module import SPQRModule
 from modules.key_exchange.pqxdh.module import PQXDHModule
 from modules.key_exchange.x3dh.module import X3DHModule
 
@@ -8,6 +9,7 @@ class Router:
     def __init__(self):
         self.modules = {
             "double_ratchet": DoubleRatchetModule(),
+            "spqr": SPQRModule(),
             "pqxdh": PQXDHModule(),
             "x3dh": X3DHModule(),
         }
@@ -17,6 +19,12 @@ class Router:
                 "title": "Double Ratchet",
                 "subtitle": "Post-X3DH messaging",
                 "description": "Interactive ratchet simulation with message timeline, attacker perspective, and send/receive step visualization.",
+            },
+            "spqr": {
+                "id": "spqr",
+                "title": "SPQR",
+                "subtitle": "Sparse post-quantum messaging",
+                "description": "Sparse Post-Quantum Ratchet simulation with SPQR state-machine messaging and timeline interaction.",
             },
             "x3dh": {
                 "id": "x3dh",

@@ -28,8 +28,26 @@ _AEAD_NONCE_LEN = 12
 _AEAD_TAG_LEN = 16
 
 
+_SPQR_HEADER_SIZE = 64
+_SPQR_EK_SIZE = 1536
+_SPQR_CT1_SIZE = 1408
+_SPQR_CT2_SIZE = 160
+
+_spqr_private_to_public: dict[bytes, bytes] = {}
+_spqr_ciphertext_to_shared: dict[bytes, bytes] = {}
+
+
 def _hash_to_32_bytes(data: bytes) -> bytes:
     return hashlib.sha256(data).digest()
+
+
+def _expand_to_length(seed: bytes, length: int) -> bytes:
+    out = b""
+    counter = 0
+    while len(out) < length:
+        out += hashlib.sha256(seed + counter.to_bytes(4, "big")).digest()
+        counter += 1
+    return out[:length]
 
 
 def _encode_header(header: Header) -> bytes:
@@ -256,3 +274,75 @@ def CALC_AD(
     }
     serialized = json.dumps(payload, sort_keys=True).encode("utf-8")
     return hashlib.sha256(serialized).hexdigest()
+
+
+def SPQR_INCREMENTAL_KEM_KEYGEN() -> tuple[bytes, bytes, bytes]:
+    """Return (dk, ek_header, ek_vector) for the SPQR incremental KEM interface."""
+    keypair = GENERATE_PQKEM_KEYPAIR()
+    dk = bytes.fromhex(keypair["private"])
+    ek = bytes.fromhex(keypair["public"])
+    if len(ek) != _SPQR_EK_SIZE + 32:
+        raise ValueError("Unexpected ML-KEM-1024 public key size")
+
+    ek_vector = ek[:_SPQR_EK_SIZE]
+    ek_seed = ek[_SPQR_EK_SIZE:]
+    hek = hashlib.sha3_256(ek_seed + ek_vector).digest()
+    ek_header = ek_seed + hek
+    if len(ek_header) != _SPQR_HEADER_SIZE:
+        raise ValueError("Unexpected SPQR header size")
+
+    _spqr_private_to_public[dk] = ek
+    return dk, ek_header, ek_vector
+
+
+def SPQR_INCREMENTAL_KEM_ENCAPS1(ek_header: bytes) -> tuple[bytes, bytes, bytes]:
+    """Return (encaps_secret, ct1, shared_secret) using only ek_header."""
+    if len(ek_header) != _SPQR_HEADER_SIZE:
+        raise ValueError("Invalid SPQR encapsulation header size")
+
+    randomness = get_random_bytes(32)
+    ct1 = _expand_to_length(hashlib.sha3_256(b"SPQR:ct1" + ek_header + randomness).digest(), _SPQR_CT1_SIZE)
+    shared_secret = hashlib.sha3_256(b"SPQR:ss" + ek_header + ct1 + randomness).digest()
+    encaps_secret = randomness
+    return encaps_secret, ct1, shared_secret
+
+
+def SPQR_INCREMENTAL_KEM_ENCAPS2(encaps_secret: bytes, ek_header: bytes, ek_vector: bytes) -> bytes:
+    """Return ct2 and register complete ciphertext for simulated decapsulation."""
+    if len(encaps_secret) != 32:
+        raise ValueError("Invalid encapsulation secret size")
+    if len(ek_header) != _SPQR_HEADER_SIZE:
+        raise ValueError("Invalid SPQR encapsulation header size")
+    if len(ek_vector) != _SPQR_EK_SIZE:
+        raise ValueError("Invalid SPQR encapsulation vector size")
+
+    ek_seed = ek_header[:32]
+    hek = ek_header[32:]
+    if hashlib.sha3_256(ek_seed + ek_vector).digest() != hek:
+        raise ValueError("EK integrity check failed")
+
+    ct1 = _expand_to_length(hashlib.sha3_256(b"SPQR:ct1" + ek_header + encaps_secret).digest(), _SPQR_CT1_SIZE)
+    ct2 = _expand_to_length(
+        hashlib.sha3_256(b"SPQR:ct2" + ek_header + ek_vector + encaps_secret).digest(),
+        _SPQR_CT2_SIZE,
+    )
+    shared_secret = hashlib.sha3_256(b"SPQR:ss" + ek_header + ct1 + encaps_secret).digest()
+    _spqr_ciphertext_to_shared[ct1 + ct2] = shared_secret
+    return ct2
+
+
+def SPQR_INCREMENTAL_KEM_DECAPS(dk: bytes, ct1: bytes, ct2: bytes) -> bytes:
+    """Decapsulate shared secret for the simulated incremental interface."""
+    if len(ct1) != _SPQR_CT1_SIZE:
+        raise ValueError("Invalid SPQR ct1 size")
+    if len(ct2) != _SPQR_CT2_SIZE:
+        raise ValueError("Invalid SPQR ct2 size")
+
+    if dk not in _spqr_private_to_public:
+        raise ValueError("Unknown SPQR decapsulation key")
+
+    key = ct1 + ct2
+    shared_secret = _spqr_ciphertext_to_shared.get(key)
+    if shared_secret is None:
+        raise ValueError("Unknown SPQR ciphertext for simulated decapsulation")
+    return shared_secret
