@@ -43,6 +43,8 @@ def _format_plaintext(value: Any) -> str | Any:
     """Convert plaintext bytes to a readable string for visualization."""
     if value is None:
         return None
+    if isinstance(value, list) and all(isinstance(item, int) and 0 <= item <= 255 for item in value):
+        value = bytes(value)
     if isinstance(value, (bytes, bytearray)):
         try:
             return value.decode('utf-8', errors='replace')
@@ -52,9 +54,11 @@ def _format_plaintext(value: Any) -> str | Any:
 
 
 def _var_node(label: str, value: Any, tip_key: str) -> ft.Control:
+    label_key = label.lower()
+    display_value = _to_text(value) if "plaintext" in label_key else _last_n_chars(value, 8)
     return _flow_node(
         label,
-        value,
+        display_value,
         width=220,
         tooltip=_tt(tip_key),
         full_value=value,
@@ -415,7 +419,7 @@ def _send_keys_unsampled(step_data: dict[str, Any], tooltips: dict[str, str]) ->
             "control": ft.Column(
                 controls=[
                     ft.Text("Start header stream", weight="bold"),
-                    _var_node("header||mac", header_with_mac, "spqr_step_header_with_mac", value="Initialized with header||mac"),
+                    _var_node("header||mac", header_with_mac, "spqr_step_header_with_mac"),
                     ft.Text("↓", size=24),
                     _function_node(
                         "new Encoder",
@@ -610,15 +614,13 @@ def _send_header_received(step_data: dict[str, Any], tooltips: dict[str, str]) -
     ctx = _send_context(step_data)
     after = step_data.get("after") if isinstance(step_data.get("after"), dict) else {}
     after_node = after.get("scka_node") if isinstance(after.get("scka_node"), dict) else {}
+    encrypt_trace = step_data.get("encrypt_trace") if isinstance(step_data.get("encrypt_trace"), dict) else {}
     auth = after_node.get("auth")
     ek_header = after_node.get("ek_header")
     encaps_secret = after_node.get("encaps_secret")
     ct1 = after_node.get("ct1")
     ct1_encoder = after_node.get("ct1_encoder") if isinstance(after_node.get("ct1_encoder"), dict) else {}
-    output_key = {
-        "epoch": ctx["msg_epoch"],
-        "key": "derived by KDF_OK",
-    }
+    output_key = encrypt_trace.get("scka_output_key")
 
     return [
         {
@@ -640,10 +642,10 @@ def _send_header_received(step_data: dict[str, Any], tooltips: dict[str, str]) -
                             _var_node("ct1", ct1, "spqr_step_chunk"),
                             _flow_node(
                                 "ss",
-                                "derived",
+                                _last_n_chars(encrypt_trace.get("raw_ss"), 8),
                                 width=220,
                                 tooltip=_tt("spqr_step_key_evolution"),
-                                full_value="shared secret",
+                                full_value=encrypt_trace.get("raw_ss"),
                             ),
                         ],
                         alignment=ft.MainAxisAlignment.CENTER,
@@ -679,7 +681,7 @@ def _send_header_received(step_data: dict[str, Any], tooltips: dict[str, str]) -
                     ft.Text("↓", size=24),
                     _var_node(
                         "SS (output_key)",
-                        output_key,
+                        _to_text(output_key),
                         "spqr_step_output_key",
                     ),
                 ],
@@ -1455,12 +1457,10 @@ def _receive_no_header_received(step_data: dict[str, Any], tooltips: dict[str, s
                         full_value="header_decoder.add_chunk(chunk)",
                     ),
                     ft.Text("↓", size=24),
-                    _flow_node(
-                        "header_with_mac",
+                    _var_node(
+                        "header with MAC",
                         header_with_mac,
-                        width=320,
-                        tooltip=_tt("spqr_step_header_with_mac"),
-                        full_value=header_with_mac,
+                        "spqr_step_header_with_mac",
                     ),
                 ],
                 spacing=6,
