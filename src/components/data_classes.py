@@ -490,6 +490,7 @@ class SckaSendResult:
     msg: SpqrSckaMessage
     sending_epoch: int
     output_key: SckaOutputKey | None
+    raw_ss: bytes | None = None
 
 
 @dataclass

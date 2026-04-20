@@ -435,6 +435,7 @@ class HeaderReceived(SckaNode):
     def send(self, state: BraidProtocolState) -> SckaSendResult:
         # Generate shared secret and ct1 using incremental KEM interface
         encaps_secret, ct1, ss = SimIncrementalKEM.Encaps1(self.ek_header)
+        raw_ss = ss
         ss = KDF_OK(ss, self.epoch)
 
         # Update authenticator
@@ -456,7 +457,12 @@ class HeaderReceived(SckaNode):
             ek_decoder=self.ek_decoder,
         )
         msg = SpqrSckaMessage(epoch=self.epoch, msg_type=SpqrMessageType.CT1, data=chunk)
-        return SckaSendResult(msg=msg, sending_epoch=self.epoch - 1, output_key=SckaOutputKey(epoch=self.epoch, key=ss))
+        return SckaSendResult(
+            msg=msg,
+            sending_epoch=self.epoch - 1,
+            output_key=SckaOutputKey(epoch=self.epoch, key=ss),
+            raw_ss=raw_ss,
+        )
 
     def receive(self, state: BraidProtocolState, msg: SpqrSckaMessage) -> SckaReceiveResult:
         # No action taken
@@ -795,6 +801,7 @@ def SCKARatchetSendKey(state: SpqrRatchetState) -> tuple[SpqrSckaMessage, int, b
         "new_cks": new_cks,
         "new_ckr": new_ckr,
         "scka_output_key": derived_output_key,
+        "raw_ss": send_result.raw_ss,
     }
     return send_result.msg, counter, mk, trace
 
