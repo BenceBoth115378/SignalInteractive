@@ -6,7 +6,7 @@ from components.data_classes import SpqrSessionState, SpqrRatchetState
 from modules.base_view import format_key, last_n_chars, make_copy_handler
 from modules.messaging.messaging_base_view import is_party_visible
 
-SIDE_PANEL_WIDTH = 360
+SIDE_PANEL_WIDTH = 430
 
 
 def _safe_decode(data: bytes) -> str:
@@ -227,9 +227,19 @@ def build_visual(
 
     return ft.Row(
         [
-            ft.Container(ft.Column([alice_panel], expand=True), expand=True, height=timeline_height, padding=10),
+            ft.Container(
+                ft.Column([alice_panel], spacing=10, tight=False),
+                width=SIDE_PANEL_WIDTH,
+                height=timeline_height,
+                padding=10,
+            ),
             ft.Container(ft.Container(content=timeline, height=timeline_height, padding=10), expand=True, padding=10),
-            ft.Container(ft.Column([bob_panel], expand=True), expand=True, height=timeline_height, padding=10),
+            ft.Container(
+                ft.Column([bob_panel], spacing=10, tight=False),
+                width=SIDE_PANEL_WIDTH,
+                height=timeline_height,
+                padding=10,
+            ),
         ],
         expand=True,
         height=timeline_height,

@@ -478,7 +478,7 @@ class DoubleRatchetModule(MessagingBaseModule):
 
     def _build_initializer_switch_warning(self, old_initializer: str, new_initializer: str) -> str:
         template = f"Session initializer switched from {old_initializer} to {new_initializer}.\n" if old_initializer and new_initializer else ""
-        assumption = "Double Ratchet now always starts from a fresh X3DH run; Bob completes X3DH bootstrap on first receive."
+        assumption = "Double Ratchet starts from a fresh X3DH run Alice already completed her steps; Bob completes X3DH bootstrap on his first receive."
         return template + assumption
 
     def _initializer_sent_count(self) -> int:
@@ -696,7 +696,7 @@ class DoubleRatchetModule(MessagingBaseModule):
 
         def show_initial_warning_with_bootstrap_option(message: str) -> None:
             show_bootstrap_checkbox = ft.Checkbox(
-                label="Show Alice X3DH bootstrap steps after closing",
+                label="Show Alice X3DH steps after closing",
                 value=True,
             )
 

@@ -7,7 +7,7 @@ from modules.base_view import format_key, last_n_chars, make_copy_handler
 from modules.tooltip_helpers import build_tooltip_text, get_tooltip_messages
 
 
-SIDE_PANEL_WIDTH = 360
+SIDE_PANEL_WIDTH = 430
 
 
 def _build_party_panel(
@@ -495,15 +495,15 @@ def build_visual(
     top_row = ft.Row(
         [
             ft.Container(
-                ft.Column(initializer_controls, spacing=10, tight=False, expand=True),
-                expand=True,
+                ft.Column(initializer_controls, spacing=10, tight=False),
+                width=SIDE_PANEL_WIDTH,
                 height=timeline_height,
                 padding=10,
             ),
             ft.Container(timeline_container, expand=True, padding=10),
             ft.Container(
-                ft.Column(responder_controls, spacing=10, tight=False, expand=True),
-                expand=True,
+                ft.Column(responder_controls, spacing=10, tight=False),
+                width=SIDE_PANEL_WIDTH,
                 height=timeline_height,
                 padding=10,
             ),
