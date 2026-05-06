@@ -1,7 +1,5 @@
 """Key history tracking utilities for the Double Ratchet module."""
 
-from typing import Any
-
 from components.data_classes import (
     DoubleRatchetState,
     KeyEvent,
@@ -10,14 +8,7 @@ from components.data_classes import (
     SendStepVisualizationSnapshot,
 )
 
-
-def _keys_differ(key1: Any, key2: Any) -> bool:
-    """Return True when key values changed."""
-    if key1 is None and key2 is None:
-        return False
-    if key1 is None or key2 is None:
-        return True
-    return key1 != key2
+from modules.messaging.messaging_base_view import keys_differ
 
 
 def _snapshot_to_string(step_number: int, step_type: str) -> str:
@@ -86,7 +77,7 @@ def track_keys_from_send_snapshot(
     before = snapshot.before
     after = snapshot.after
 
-    if _keys_differ(before.RK, after.RK) and after.RK is not None:
+    if keys_differ(before.RK, after.RK) and after.RK is not None:
         party.key_history.add_rk_event(
             KeyEvent(
                 key_type="RK",
@@ -106,7 +97,7 @@ def track_keys_from_send_snapshot(
     # This keeps CKs#1 usable for the first sent message and avoids an immediate extra entry.
     if before.CKs is not None:
         latest_cks = party.key_history.cks_events[-1].key_value if party.key_history.cks_events else None
-        if _keys_differ(latest_cks, before.CKs):
+        if keys_differ(latest_cks, before.CKs):
             party.key_history.add_cks_event(
                 KeyEvent(
                     key_type="CK",
@@ -122,7 +113,7 @@ def track_keys_from_send_snapshot(
                 )
             )
 
-    if _keys_differ(before.CKs, after.CKs) and after.CKs is not None:
+    if keys_differ(before.CKs, after.CKs) and after.CKs is not None:
         # Keep tracking of chain evolution for subsequent messages via before.CKs on later send steps.
         pass
 
@@ -154,7 +145,7 @@ def track_keys_from_receive_snapshot(
     before = snapshot.before
     after = snapshot.after
 
-    if _keys_differ(before.RK, after.RK) and after.RK is not None:
+    if keys_differ(before.RK, after.RK) and after.RK is not None:
         context = "Root key derivation during receive"
         if snapshot.dh_ratchet_needed:
             context += " (DH ratchet triggered)"
@@ -177,7 +168,7 @@ def track_keys_from_receive_snapshot(
     ckr_for_current_message = snapshot.ckr_before_kdf_ck
     if ckr_for_current_message is not None:
         latest_ckr = party.key_history.ckr_events[-1].key_value if party.key_history.ckr_events else None
-        if _keys_differ(latest_ckr, ckr_for_current_message):
+        if keys_differ(latest_ckr, ckr_for_current_message):
             context = "Receive chain key"
             if snapshot.dh_ratchet_needed:
                 context += " (new from DH ratchet)"
@@ -200,7 +191,7 @@ def track_keys_from_receive_snapshot(
                 )
             )
 
-    if _keys_differ(before.CKr, after.CKr) and after.CKr is not None:
+    if keys_differ(before.CKr, after.CKr) and after.CKr is not None:
         context = "Receive chain key"
         if snapshot.dh_ratchet_needed:
             context += " (new from DH ratchet)"
@@ -227,30 +218,3 @@ def track_keys_from_receive_snapshot(
         )
 
 
-def get_key_display_label(key_type: str, key_number: int) -> str:
-    return f"{key_type}#{key_number}"
-
-
-def get_key_tooltip_text(event: KeyEvent) -> str:
-    """Build tooltip text for key history entries."""
-    lines = []
-
-    lines.append(f"Type: {event.key_type} (#{event.key_number})")
-    lines.append(f"Generated: {event.created_at_step}")
-    lines.append(f"Context: {event.created_in_context}")
-
-    key_hex = (
-        event.key_value.hex()
-        if isinstance(event.key_value, bytes)
-        else str(event.key_value)
-    )
-    lines.append(f"Value (last 16 chars): ...{key_hex[-16:]}")
-
-    if event.used_for:
-        lines.append(f"Used in: {', '.join(event.used_for[:3])}")
-        if len(event.used_for) > 3:
-            lines.append(f"  ... and {len(event.used_for) - 3} more")
-    else:
-        lines.append("Not yet used")
-
-    return "\n".join(lines)

@@ -13,7 +13,7 @@ from components.data_classes import (
     ReceiveStepVisualizationSnapshot,
     SendStepVisualizationSnapshot,
 )
-from modules.messaging.messaging_base_module import MessagingBaseModule
+from modules.messaging.messaging_base_module import MessagingBaseModule, encode_nested, decode_nested
 from modules.messaging.double_ratchet.logic import (
     RatchetInitBob,
     RatchetEncrypt,
@@ -48,39 +48,20 @@ from modules.messaging.double_ratchet.view import build_visual
 from components.data_classes import PartyState
 
 
-def _encode_bytes(value: Any) -> Any:
+def _encode_bytes_for_message(value: Any) -> Any:
+    """Encode bytes values in message objects (used with encode_nested)."""
     if isinstance(value, bytes):
         return {"__bytes__": value.hex()}
     return value
 
 
-def _decode_bytes(value: Any) -> Any:
+def _decode_bytes_from_message(value: Any) -> Any:
+    """Decode bytes values in message objects (used with decode_nested)."""
     if isinstance(value, dict) and len(value) == 1 and isinstance(value.get("__bytes__"), str):
         try:
             return bytes.fromhex(value["__bytes__"])
         except ValueError:
             return b""
-    return value
-
-
-def _encode_nested(value: Any) -> Any:
-    if isinstance(value, bytes):
-        return _encode_bytes(value)
-    if isinstance(value, dict):
-        return {key: _encode_nested(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_encode_nested(item) for item in value]
-    return value
-
-
-def _decode_nested(value: Any) -> Any:
-    decoded = _decode_bytes(value)
-    if decoded is not value:
-        return decoded
-    if isinstance(value, dict):
-        return {key: _decode_nested(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_decode_nested(item) for item in value]
     return value
 
 
@@ -94,7 +75,7 @@ def _deserialize_key_event(data: Any) -> KeyEvent | None:
     return KeyEvent(
         key_type=data.get("key_type", "") if isinstance(data.get("key_type"), str) else "",
         key_number=data.get("key_number", 0) if isinstance(data.get("key_number"), int) else 0,
-        key_value=_decode_nested(data.get("key_value")),
+        key_value=decode_nested(data.get("key_value"), {}),
         created_at_step=data.get("created_at_step", "") if isinstance(data.get("created_at_step"), str) else "",
         created_in_context=data.get("created_in_context", "") if isinstance(data.get("created_in_context"), str) else "",
         public_value=data.get("public_value", "") if isinstance(data.get("public_value"), str) else "",
@@ -137,7 +118,7 @@ def _serialize_party(state: PartyState) -> dict:
         {
             "dh": dh,
             "n": n,
-            "mk": _encode_bytes(mk),
+            "mk": _encode_bytes_for_message(mk),
         }
         for (dh, n), mk in state.MKSKIPPED.items()
     ]
@@ -146,14 +127,14 @@ def _serialize_party(state: PartyState) -> dict:
         "name": state.name,
         "DHs": asdict(state.DHs) if state.DHs is not None else None,
         "DHr": state.DHr,
-        "RK": _encode_bytes(state.RK),
-        "CKs": _encode_bytes(state.CKs),
-        "CKr": _encode_bytes(state.CKr),
+        "RK": _encode_bytes_for_message(state.RK),
+        "CKs": _encode_bytes_for_message(state.CKs),
+        "CKr": _encode_bytes_for_message(state.CKr),
         "Ns": state.Ns,
         "Nr": state.Nr,
         "PN": state.PN,
         "MKSKIPPED": skipped,
-        "key_history": _encode_nested(asdict(state.key_history)),
+        "key_history": encode_nested(asdict(state.key_history)),
     }
 
 
@@ -168,20 +149,20 @@ def _deserialize_party(data: dict, default_name: str) -> PartyState:
         if not isinstance(dh, str) or not isinstance(n, int):
             continue
 
-        skipped[(dh, n)] = _decode_bytes(entry.get("mk"))
+        skipped[(dh, n)] = _decode_bytes_from_message(entry.get("mk"))
 
     return PartyState(
         name=data.get("name", default_name),
         DHs=data.get("DHs"),
         DHr=data.get("DHr", ""),
-        RK=_decode_bytes(data.get("RK", b"RK0")),
-        CKs=_decode_bytes(data.get("CKs")),
-        CKr=_decode_bytes(data.get("CKr")),
+        RK=_decode_bytes_from_message(data.get("RK", b"RK0")),
+        CKs=_decode_bytes_from_message(data.get("CKs")),
+        CKr=_decode_bytes_from_message(data.get("CKr")),
         Ns=data.get("Ns", 0),
         Nr=data.get("Nr", 0),
         PN=data.get("PN", 0),
         MKSKIPPED=skipped,
-        key_history=_deserialize_key_history(_decode_nested(data.get("key_history", {}))),
+        key_history=_deserialize_key_history(decode_nested(data.get("key_history", {}), {})),
     )
 
 
@@ -196,12 +177,12 @@ def _serialize_message(message: MessageState) -> dict:
         }
         if message.header is not None
         else None,
-        "message_key": _encode_bytes(message.message_key),
-        "cipher": _encode_bytes(message.cipher),
-        "decrypted_by_bob": _encode_bytes(message.decrypted_by_bob),
-        "decrypted_by_alice": _encode_bytes(message.decrypted_by_alice),
+        "message_key": _encode_bytes_for_message(message.message_key),
+        "cipher": _encode_bytes_for_message(message.cipher),
+        "decrypted_by_bob": _encode_bytes_for_message(message.decrypted_by_bob),
+        "decrypted_by_alice": _encode_bytes_for_message(message.decrypted_by_alice),
         "x3dh_header": message.x3dh_header,
-        "plaintext": _encode_bytes(message.plaintext),
+        "plaintext": _encode_bytes_for_message(message.plaintext),
         "seq_id": message.seq_id,
     }
 
@@ -216,17 +197,17 @@ def _deserialize_message(data: dict) -> MessageState:
         if isinstance(dh, str) and isinstance(pn, int) and isinstance(n, int):
             header = Header(dh=dh, pn=pn, n=n)
 
-    plaintext = _decode_bytes(data.get("plaintext", b""))
+    plaintext = _decode_bytes_from_message(data.get("plaintext", b""))
     if not plaintext:
-        plaintext = _decode_bytes(data.get("decrypted_by_alice", b"")) or _decode_bytes(data.get("decrypted_by_bob", b""))
+        plaintext = _decode_bytes_from_message(data.get("decrypted_by_alice", b"")) or _decode_bytes_from_message(data.get("decrypted_by_bob", b""))
 
     return MessageState(
         sender=data.get("sender", ""),
         receiver=data.get("receiver", ""),
-        message_key=_decode_bytes(data.get("message_key", "")),
-        cipher=_decode_bytes(data.get("cipher", "")),
-        decrypted_by_bob=_decode_bytes(data.get("decrypted_by_bob", "")),
-        decrypted_by_alice=_decode_bytes(data.get("decrypted_by_alice", "")),
+        message_key=_decode_bytes_from_message(data.get("message_key", "")),
+        cipher=_decode_bytes_from_message(data.get("cipher", "")),
+        decrypted_by_bob=_decode_bytes_from_message(data.get("decrypted_by_bob", "")),
+        decrypted_by_alice=_decode_bytes_from_message(data.get("decrypted_by_alice", "")),
         header=header,
         x3dh_header=data.get("x3dh_header") if isinstance(data.get("x3dh_header"), dict) else None,
         plaintext=plaintext,
@@ -272,21 +253,21 @@ class DoubleRatchetModule(MessagingBaseModule):
                         "pn": pending["header"].pn,
                         "n": pending["header"].n,
                     },
-                    "cipher": _encode_bytes(pending["cipher"]),
-                    "plaintext": _encode_bytes(pending.get("plaintext", b"")),
+                    "cipher": _encode_bytes_for_message(pending["cipher"]),
+                    "plaintext": _encode_bytes_for_message(pending.get("plaintext", b"")),
                     "x3dh_header": pending.get("x3dh_header"),
                 }
                 for pending in self.pending_messages
             ],
-            "session_ad": _encode_bytes(self._session_ad),
+            "session_ad": _encode_bytes_for_message(self._session_ad),
             "x3dh_initial_header": self._x3dh_initial_header,
             "x3dh_bob_spk_pair": asdict(self._x3dh_bob_spk_pair) if self._x3dh_bob_spk_pair is not None else None,
-            "x3dh_shared_secret": _encode_bytes(self._x3dh_shared_secret),
+            "x3dh_shared_secret": _encode_bytes_for_message(self._x3dh_shared_secret),
             "x3dh_state_data": self._x3dh_state_data,
             "x3dh_bob_initialized": self._x3dh_bob_initialized,
             "x3dh_alice_received_bob_reply": self._x3dh_alice_received_bob_reply,
             "pending_show_alice_x3dh_bootstrap": self._pending_show_alice_x3dh_bootstrap,
-            "attacker_compromised_secrets": _encode_nested(self._attacker_compromised_secrets),
+            "attacker_compromised_secrets": encode_nested(self._attacker_compromised_secrets),
         }
 
     def import_state(self, data: dict) -> None:
@@ -334,13 +315,13 @@ class DoubleRatchetModule(MessagingBaseModule):
                     "sender": sender,
                     "receiver": receiver,
                     "header": Header(dh=header_dh, pn=header_pn, n=header_n),
-                    "cipher": _decode_bytes(pending.get("cipher")),
-                    "plaintext": _decode_bytes(pending.get("plaintext", b"")),
+                    "cipher": _decode_bytes_from_message(pending.get("cipher")),
+                    "plaintext": _decode_bytes_from_message(pending.get("plaintext", b"")),
                     "x3dh_header": pending.get("x3dh_header") if isinstance(pending.get("x3dh_header"), dict) else None,
                 }
             )
 
-        self._session_ad = _decode_bytes(data.get("session_ad", b"")) or b""
+        self._session_ad = _decode_bytes_from_message(data.get("session_ad", b"")) or b""
         self._x3dh_initial_header = data.get("x3dh_initial_header") if isinstance(data.get("x3dh_initial_header"), dict) else None
         bob_spk_pair_data = data.get("x3dh_bob_spk_pair")
         if isinstance(bob_spk_pair_data, dict):
@@ -352,14 +333,14 @@ class DoubleRatchetModule(MessagingBaseModule):
                 self._x3dh_bob_spk_pair = None
         else:
             self._x3dh_bob_spk_pair = None
-        self._x3dh_shared_secret = _decode_bytes(data.get("x3dh_shared_secret"))
+        self._x3dh_shared_secret = _decode_bytes_from_message(data.get("x3dh_shared_secret"))
         if self._x3dh_shared_secret == b"":
             self._x3dh_shared_secret = None
         self._x3dh_state_data = data.get("x3dh_state_data") if isinstance(data.get("x3dh_state_data"), dict) else None
         self._x3dh_bob_initialized = bool(data.get("x3dh_bob_initialized", False))
         self._x3dh_alice_received_bob_reply = data.get("x3dh_alice_received_bob_reply", False)
         self._pending_show_alice_x3dh_bootstrap = bool(data.get("pending_show_alice_x3dh_bootstrap", True))
-        loaded_compromised = _decode_nested(data.get("attacker_compromised_secrets", {}))
+        loaded_compromised = decode_nested(data.get("attacker_compromised_secrets", {}), {})
         if isinstance(loaded_compromised, dict):
             self._attacker_compromised_secrets = {
                 key_id: dict(secret)

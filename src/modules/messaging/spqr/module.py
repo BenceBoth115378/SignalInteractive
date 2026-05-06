@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import asdict, fields, is_dataclass
-from enum import Enum
 import json
 from typing import Any
 
@@ -24,7 +23,8 @@ from components.data_classes import (
     SpqrSckaMessage,
     SpqrSessionState,
 )
-from modules.messaging.messaging_base_module import MessagingBaseModule
+from modules.messaging.messaging_base_module import MessagingBaseModule, encode_nested, decode_nested
+from modules.messaging.messaging_base_view import tail_hex
 from modules.messaging.spqr.key_history import (
     initialize_key_history,
     track_keys_from_send_step,
@@ -63,61 +63,6 @@ from modules.key_exchange.pqxdh.logic import (
     alice_calculates_associated_data,
     alice_sends_initial_message,
 )
-
-
-def _encode_nested(value: Any) -> Any:
-    if isinstance(value, bytes):
-        return {"__bytes__": value.hex()}
-    if isinstance(value, Enum):
-        return {"__enum__": value.__class__.__name__, "value": value.value}
-    if is_dataclass(value):
-        return {
-            "__class__": value.__class__.__name__,
-            "fields": {field.name: _encode_nested(getattr(value, field.name)) for field in fields(value)},
-        }
-    if isinstance(value, dict):
-        return {key: _encode_nested(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_encode_nested(item) for item in value]
-    return value
-
-
-def _decode_nested(value: Any, class_map: dict[str, type]) -> Any:
-    if isinstance(value, dict):
-        if "__bytes__" in value and isinstance(value["__bytes__"], str):
-            try:
-                return bytes.fromhex(value["__bytes__"])
-            except ValueError:
-                return b""
-        if "__enum__" in value and isinstance(value["__enum__"], str):
-            enum_cls = class_map.get(value["__enum__"])
-            if enum_cls is not None and issubclass(enum_cls, Enum):
-                try:
-                    return enum_cls(value.get("value"))
-                except Exception:
-                    return value.get("value")
-        if "__class__" in value and isinstance(value["__class__"], str):
-            class_name = value["__class__"]
-            cls = class_map.get(class_name)
-            raw_fields = value.get("fields", {})
-            if cls is not None and isinstance(raw_fields, dict):
-                kwargs = {key: _decode_nested(item, class_map) for key, item in raw_fields.items()}
-                return cls(**kwargs)
-        return {key: _decode_nested(item, class_map) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_decode_nested(item, class_map) for item in value]
-    return value
-
-
-def _tail(value: bytes | None, size: int = 12) -> str:
-    if value is None:
-        return "None"
-    text = value.hex()
-    if len(text) <= size:
-        return text
-    return text[-size:]
-
-
 class SPQRModule(MessagingBaseModule):
     def __init__(self) -> None:
         self.session = SpqrSessionState()
@@ -299,9 +244,9 @@ class SPQRModule(MessagingBaseModule):
             "node": state_name,
             "epoch": state.epoch,
             "direction": state.direction,
-            "rk_tail": _tail(state.RK),
-            "send_ck_tail": _tail(send_ck),
-            "recv_ck_tail": _tail(recv_ck),
+            "rk_tail": tail_hex(state.RK),
+            "send_ck_tail": tail_hex(send_ck),
+            "recv_ck_tail": tail_hex(recv_ck),
             "scka_node": self._node_snapshot(node),
         }
 
@@ -340,7 +285,7 @@ class SPQRModule(MessagingBaseModule):
             "encrypt_trace": encrypt_trace,
             "header_desc": self._header_desc(header),
             "message_type": header.msg.msg_type.value,
-            "message_desc": f"plaintext={self._safe_text(plaintext)} | cipher_tail={_tail(cipher, 16)}",
+            "message_desc": f"plaintext={self._safe_text(plaintext)} | cipher_tail={tail_hex(cipher, 16)}",
         }
 
     def _record_receive_step(
@@ -367,7 +312,7 @@ class SPQRModule(MessagingBaseModule):
             "receive_trace": receive_trace,
             "header_desc": self._header_desc(header),
             "message_type": header.msg.msg_type.value,
-            "message_desc": f"cipher_tail={_tail(cipher, 16)} | decrypted={self._safe_text(decrypted)}",
+            "message_desc": f"cipher_tail={tail_hex(cipher, 16)} | decrypted={self._safe_text(decrypted)}",
         }
 
     def _get_party_state(self, party: str) -> SpqrRatchetState:
@@ -522,18 +467,18 @@ class SPQRModule(MessagingBaseModule):
 
     def export_state(self) -> dict:
         return {
-            "session": _encode_nested(self.session),
-            "pending_messages": _encode_nested(self.pending_messages),
+            "session": encode_nested(self.session),
+            "pending_messages": encode_nested(self.pending_messages),
             "next_pending_id": self._next_pending_id,
-            "session_ad": _encode_nested(self._session_ad),
-            "pqxdh_bootstrap_payload": _encode_nested(self._pqxdh_bootstrap_payload),
-            "pqxdh_initial_header": _encode_nested(self._pqxdh_initial_header),
-            "pqxdh_shared_secret": _encode_nested(self._pqxdh_shared_secret),
-            "pqxdh_state_data": _encode_nested(self._pqxdh_state_data),
+            "session_ad": encode_nested(self._session_ad),
+            "pqxdh_bootstrap_payload": encode_nested(self._pqxdh_bootstrap_payload),
+            "pqxdh_initial_header": encode_nested(self._pqxdh_initial_header),
+            "pqxdh_shared_secret": encode_nested(self._pqxdh_shared_secret),
+            "pqxdh_state_data": encode_nested(self._pqxdh_state_data),
             "pqxdh_bob_initialized": self._pqxdh_bob_initialized,
             "pqxdh_alice_received_bob_reply": self._pqxdh_alice_received_bob_reply,
             "pending_show_alice_pqxdh_bootstrap": self._pending_show_alice_pqxdh_bootstrap,
-            "last_bob_bootstrap_info": _encode_nested(self._last_bob_bootstrap_info),
+            "last_bob_bootstrap_info": encode_nested(self._last_bob_bootstrap_info),
         }
 
     def import_state(self, data: dict) -> None:
@@ -542,31 +487,31 @@ class SPQRModule(MessagingBaseModule):
         pending_raw = data.get("pending_messages", [])
         next_id = data.get("next_pending_id", 1)
 
-        decoded_session = _decode_nested(session_raw, class_map)
+        decoded_session = decode_nested(session_raw, class_map)
         if isinstance(decoded_session, SpqrSessionState):
             self.session = decoded_session
         else:
             self._reset_session()
             return
 
-        decoded_pending = _decode_nested(pending_raw, class_map)
+        decoded_pending = decode_nested(pending_raw, class_map)
         self.pending_messages = decoded_pending if isinstance(decoded_pending, list) else []
         self._next_pending_id = next_id if isinstance(next_id, int) and next_id > 0 else 1
-        self._session_ad = _decode_nested(data.get("session_ad"), class_map) if data.get("session_ad") is not None else b""
+        self._session_ad = decode_nested(data.get("session_ad"), class_map) if data.get("session_ad") is not None else b""
         if not isinstance(self._session_ad, bytes):
             self._session_ad = b""
-        decoded_bootstrap = _decode_nested(data.get("pqxdh_bootstrap_payload"), class_map)
+        decoded_bootstrap = decode_nested(data.get("pqxdh_bootstrap_payload"), class_map)
         self._pqxdh_bootstrap_payload = decoded_bootstrap if isinstance(decoded_bootstrap, dict) else None
-        decoded_header = _decode_nested(data.get("pqxdh_initial_header"), class_map)
+        decoded_header = decode_nested(data.get("pqxdh_initial_header"), class_map)
         self._pqxdh_initial_header = decoded_header if isinstance(decoded_header, dict) else None
-        decoded_shared_secret = _decode_nested(data.get("pqxdh_shared_secret"), class_map)
+        decoded_shared_secret = decode_nested(data.get("pqxdh_shared_secret"), class_map)
         self._pqxdh_shared_secret = decoded_shared_secret if isinstance(decoded_shared_secret, bytes) else None
-        decoded_state_data = _decode_nested(data.get("pqxdh_state_data"), class_map)
+        decoded_state_data = decode_nested(data.get("pqxdh_state_data"), class_map)
         self._pqxdh_state_data = decoded_state_data if isinstance(decoded_state_data, dict) else None
         self._pqxdh_bob_initialized = bool(data.get("pqxdh_bob_initialized", False))
         self._pqxdh_alice_received_bob_reply = bool(data.get("pqxdh_alice_received_bob_reply", False))
         self._pending_show_alice_pqxdh_bootstrap = bool(data.get("pending_show_alice_pqxdh_bootstrap", True))
-        decoded_last_bootstrap = _decode_nested(data.get("last_bob_bootstrap_info"), class_map)
+        decoded_last_bootstrap = decode_nested(data.get("last_bob_bootstrap_info"), class_map)
         self._last_bob_bootstrap_info = decoded_last_bootstrap if isinstance(decoded_last_bootstrap, dict) else None
         self._send_steps.clear()
         self._receive_steps.clear()

@@ -4,8 +4,7 @@ import flet as ft
 
 from components.data_classes import SpqrSessionState, SpqrRatchetState
 from modules.base_view import format_key
-from modules.messaging.messaging_base_view import is_party_visible, build_key_field
-from modules.messaging.spqr.key_history import get_key_tooltip_text
+from modules.messaging.messaging_base_view import is_party_visible, build_key_field, get_key_tooltip_text
 from modules.tooltip_helpers import get_tooltip_messages
 
 SIDE_PANEL_WIDTH = 430

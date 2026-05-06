@@ -8,24 +8,7 @@ from components.data_classes import (
     SpqrSessionState,
 )
 
-
-def _keys_differ(key1: Any, key2: Any) -> bool:
-    """Return True when key values changed."""
-    if key1 is None and key2 is None:
-        return False
-    if key1 is None or key2 is None:
-        return True
-    return key1 != key2
-
-
-def _tail(value: bytes | None, size: int = 12) -> str:
-    """Get hex tail of bytes value."""
-    if value is None:
-        return "None"
-    text = value.hex() if isinstance(value, bytes) else str(value)
-    if len(text) <= size:
-        return text
-    return text[-size:]
+from modules.messaging.messaging_base_view import tail_hex
 
 
 def initialize_key_history(session: SpqrSessionState) -> None:
@@ -119,7 +102,7 @@ def track_keys_from_send_step(
     after_ck_s = after.get("send_ck_tail")
     if before_ck_s != after_ck_s and after_ck_s not in {None, "None"}:
         latest_cks = party.key_history.cks_events[-1].key_value if party.key_history.cks_events else None
-        latest_cks_tail = _tail(latest_cks) if isinstance(latest_cks, bytes) else str(latest_cks)
+        latest_cks_tail = tail_hex(latest_cks) if isinstance(latest_cks, bytes) else str(latest_cks)
         if before_ck_s != latest_cks_tail:
             party.key_history.add_cks_event(
                 KeyEvent(
@@ -171,7 +154,7 @@ def track_keys_from_receive_step(
     after_ck_r = after.get("recv_ck_tail")
     if before_ck_r != after_ck_r and before_ck_r not in {None, "None"}:
         latest_ckr = party.key_history.ckr_events[-1].key_value if party.key_history.ckr_events else None
-        latest_ckr_tail = _tail(latest_ckr) if isinstance(latest_ckr, bytes) else str(latest_ckr)
+        latest_ckr_tail = tail_hex(latest_ckr) if isinstance(latest_ckr, bytes) else str(latest_ckr)
         if before_ck_r != latest_ckr_tail:
             party.key_history.add_ckr_event(
                 KeyEvent(
@@ -187,32 +170,3 @@ def track_keys_from_receive_step(
                 )
             )
 
-
-
-def get_key_display_label(key_type: str, key_number: int) -> str:
-    return f"{key_type}#{key_number}"
-
-
-def get_key_tooltip_text(event: KeyEvent) -> str:
-    """Build tooltip text for key history entries."""
-    lines = []
-
-    lines.append(f"Type: {event.key_type} (#{event.key_number})")
-    lines.append(f"Generated: {event.created_at_step}")
-    lines.append(f"Context: {event.created_in_context}")
-
-    key_hex = (
-        event.key_value.hex()
-        if isinstance(event.key_value, bytes)
-        else str(event.key_value)
-    )
-    lines.append(f"Value (last 16 chars): ...{key_hex[-16:]}")
-
-    if event.used_for:
-        lines.append(f"Used in: {', '.join(event.used_for[:3])}")
-        if len(event.used_for) > 3:
-            lines.append(f"  ... and {len(event.used_for) - 3} more")
-    else:
-        lines.append("Not yet used")
-
-    return "\n".join(lines)
