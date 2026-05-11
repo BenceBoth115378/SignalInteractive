@@ -4,7 +4,7 @@ from typing import Any, Callable
 
 import flet as ft
 
-from modules.base_view import format_key
+from modules.base_view import format_key, last_n_chars
 
 
 def format_tooltip_value(value: Any, indent: int = 0) -> str:
@@ -102,7 +102,7 @@ def flow_node(
     border_color: str | None = None,
 ) -> ft.Control:
     controls = [ft.Text(label, weight="bold", text_align=ft.TextAlign.CENTER, color=text_color)]
-    if value:
+    if value is not None:
         controls.append(ft.Text(value, text_align=ft.TextAlign.CENTER, color=text_color))
 
     node = ft.Container(
@@ -135,9 +135,15 @@ def var_node(
     text_color: str | None = None,
     border_color: str | None = None,
 ) -> ft.Control:
+    derived_value = value
+    if derived_value is None and full_value is not None:
+        derived_value = last_n_chars(format_tooltip_value(full_value), 8)
+        if derived_value == "":
+            derived_value = "(empty)"
+
     return flow_node(
         label=label,
-        value=value,
+        value=derived_value,
         circle=False,
         width=width,
         height=height,

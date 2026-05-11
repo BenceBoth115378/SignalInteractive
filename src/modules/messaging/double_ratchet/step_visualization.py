@@ -34,73 +34,27 @@ from modules.tooltip_helpers import get_tooltip_messages
 
 
 
-def show_sending_step_visualization_dialog(
-    page: ft.Page,
+def build_dr_send_phase1_steps(
     step_data: SendStepVisualizationSnapshot,
-    on_close: Callable[[], None] | None = None,
-) -> None:
-    tooltips = get_tooltip_messages("double_ratchet")
-
-    sender = step_data.sender
-    receiver = step_data.receiver
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
     plaintext_string = bytes_to_display_str(step_data.plaintext)
     plaintext = preview_value(plaintext_string, limit=40)
-    cipher_full = step_data.cipher
-    mk_full = step_data.mk
-    before_cks_full = step_data.before.CKs
-    after_cks_full = step_data.after.CKs
     before_dhs_pub_full = step_data.before.DHs_public
     before_dhs_priv_full = step_data.before.DHs_private
-    after_dhs_pub_full = step_data.after.DHs_public
-    after_dhs_priv_full = step_data.after.DHs_private
-    header_dh_full = step_data.header.dh
-
-    cipher = last_n_chars(cipher_full, 8)
-    mk = last_n_chars(mk_full, 8)
-    before_cks = last_n_chars(before_cks_full, 8)
-    after_cks = last_n_chars(after_cks_full, 8)
-    after_ns = step_data.after.Ns
-    before_ns = step_data.before.Ns
-    before_pn = step_data.before.PN
+    before_cks_full = step_data.before.CKs
     before_dhs_pub = last_n_chars(before_dhs_pub_full, 8)
     before_dhs_priv = last_n_chars(before_dhs_priv_full, 8)
-    after_dhs_pub = last_n_chars(after_dhs_pub_full, 8)
-    after_dhs_priv = last_n_chars(after_dhs_priv_full, 8)
-    header_preview = (
-        f"dh={last_n_chars(header_dh_full, 8)}, "
-        f"pn={step_data.header.pn}, n={step_data.header.n + 1}"
-    )
-    x3dh_header_full = step_data.x3dh_header if isinstance(step_data.x3dh_header, dict) else None
-    combined_header_full = {
-        "header": {
-            "dh": header_dh_full,
-            "pn": step_data.header.pn,
-            "n": step_data.header.n + 1,
-        },
-        "x3dh_header": x3dh_header_full,
-    } if x3dh_header_full is not None else None
-    combined_header_preview = combined_dr_header_preview(
-        header_dh_full,
-        step_data.header.pn,
-        step_data.header.n + 1,
-        x3dh_header_full,
-    )
-    step2_cks_transition_full = (
-        f"old CKs: {to_text(before_cks_full)}\n"
-        f"new CKs: {to_text(after_cks_full)}"
-    )
+    before_cks = last_n_chars(before_cks_full, 8)
+    before_ns = step_data.before.Ns
+    before_pn = step_data.before.PN
 
-    step1_data_flow = ft.Column(
+    control = ft.Column(
         controls=[
             ft.Text("Data and party state", weight="bold"),
             ft.Row(
                 controls=[
-                    flow_node(
-                        "Plaintext (string)",
-                        plaintext,
-                        width=260,
-                        tooltip=tooltips.get("step_viz_plaintext", ""),
-                    ),
+                    flow_node("Plaintext (string)", plaintext, width=260, tooltip=tooltips.get("step_viz_plaintext", "")),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
@@ -120,8 +74,33 @@ def show_sending_step_visualization_dialog(
         spacing=6,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
+    return [{"title": "Data and party state", "control": control}]
 
-    step2_data_flow = ft.Column(
+
+def build_dr_send_phase2_steps(
+    step_data: SendStepVisualizationSnapshot,
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    mk_full = step_data.mk
+    before_cks_full = step_data.before.CKs
+    after_cks_full = step_data.after.CKs
+    before_dhs_pub_full = step_data.before.DHs_public
+    header_dh_full = step_data.header.dh
+    mk = last_n_chars(mk_full, 8)
+    before_cks = last_n_chars(before_cks_full, 8)
+    after_cks = last_n_chars(after_cks_full, 8)
+    before_ns = step_data.before.Ns
+    after_ns = step_data.after.Ns
+    before_pn = step_data.before.PN
+    before_dhs_pub = last_n_chars(before_dhs_pub_full, 8)
+    header_preview = (
+        f"dh={last_n_chars(header_dh_full, 8)}, "
+        f"pn={step_data.header.pn}, n={step_data.header.n + 1}"
+    )
+    x3dh_header_full = step_data.x3dh_header if isinstance(step_data.x3dh_header, dict) else None
+    cks_transition_full = f"old CKs: {to_text(before_cks_full)}\nnew CKs: {to_text(after_cks_full)}"
+
+    send_chain_control = ft.Column(
         controls=[
             ft.Text("Send chain step", weight="bold"),
             flow_node("CKs", before_cks, width=170, tooltip=tooltips.get("step_viz_send_chain_cks", ""), full_value=before_cks_full),
@@ -146,86 +125,14 @@ def show_sending_step_visualization_dialog(
                 width=260,
                 height=105,
                 tooltip=tooltips.get("step_viz_state_update", ""),
-                full_value=step2_cks_transition_full,
+                full_value=cks_transition_full,
             ),
         ],
         spacing=6,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    step4_data_flow = ft.Column(
-        controls=[
-            ft.Text("Encrypt plaintext", weight="bold"),
-            ft.Row(
-                controls=[
-                    flow_node("mk", mk, width=170, tooltip=tooltips.get("step_viz_encrypt_mk", ""), full_value=mk_full),
-                    flow_node("Plaintext", plaintext, width=170, tooltip=tooltips.get("step_viz_encrypt_plaintext", "")),
-                    flow_node("AD||header", width=170, tooltip=tooltips.get("step_viz_ad_header", "")),
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                spacing=24,
-            ),
-            ft.Text("↓", size=24),
-            flow_node("ENCRYPT", circle=True, width=170, tooltip=tooltips.get("step_viz_encrypt_fn", "")),
-            ft.Text("↓", size=24),
-            flow_node("Ciphertext", cipher, width=170, tooltip=tooltips.get("step_viz_ciphertext", ""), full_value=cipher_full),
-        ],
-        spacing=6,
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-    )
-
-    step4_x3dh_header_merge = None
-    if x3dh_header_full is not None:
-        step4_x3dh_header_merge = ft.Column(
-            controls=[
-                ft.Text("Add X3DH header data", weight="bold"),
-                ft.Row(
-                    controls=[
-                        flow_node(
-                            "X3DH header",
-                            x3dh_header_preview(x3dh_header_full),
-                            width=420,
-                            full_value=x3dh_header_full,
-                            tooltip=tooltips.get("step_viz_x3dh_header_input", ""),
-                        ),
-                        flow_node(
-                            "Header",
-                            header_preview,
-                            width=320,
-                            full_value={
-                                "dh": header_dh_full,
-                                "pn": step_data.header.pn,
-                                "n": step_data.header.n + 1,
-                            },
-                            tooltip=tooltips.get("step_viz_header_output", ""),
-                        ),
-                    ],
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    spacing=16,
-                    wrap=True,
-                ),
-                ft.Text("↓", size=24),
-                flow_node(
-                    "CONCAT",
-                    circle=True,
-                    width=220,
-                    tooltip=tooltips.get("step_viz_x3dh_header_concat", ""),
-                ),
-                ft.Text("↓", size=24),
-                flow_node(
-                    "Header including X3DH data",
-                    combined_header_preview,
-                    width=620,
-                    height=110,
-                    full_value=combined_header_full,
-                    tooltip=tooltips.get("step_viz_x3dh_header_output", ""),
-                ),
-            ],
-            spacing=6,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        )
-
-    step3_data_flow = ft.Column(
+    header_control = ft.Column(
         controls=[
             ft.Text("Create header and update state", weight="bold"),
             ft.Row(
@@ -246,80 +153,168 @@ def show_sending_step_visualization_dialog(
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    step5_before_rows = [
+    steps: list[dict[str, Any]] = [
+        {"title": "Send chain step", "control": send_chain_control},
+        {"title": "Create header and update state", "control": header_control},
+    ]
+
+    if x3dh_header_full is not None:
+        combined_header_full = {
+            "header": {"dh": header_dh_full, "pn": step_data.header.pn, "n": step_data.header.n + 1},
+            "x3dh_header": x3dh_header_full,
+        }
+        combined_header_preview = combined_dr_header_preview(header_dh_full, step_data.header.pn, step_data.header.n + 1, x3dh_header_full)
+        x3dh_control = ft.Column(
+            controls=[
+                ft.Text("Add X3DH header data", weight="bold"),
+                ft.Row(
+                    controls=[
+                        flow_node("X3DH header", x3dh_header_preview(x3dh_header_full), width=420, full_value=x3dh_header_full, tooltip=tooltips.get("step_viz_x3dh_header_input", "")),
+                        flow_node("Header", header_preview, width=320, full_value={"dh": header_dh_full, "pn": step_data.header.pn, "n": step_data.header.n + 1}, tooltip=tooltips.get("step_viz_header_output", "")),
+                    ],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=16,
+                    wrap=True,
+                ),
+                ft.Text("↓", size=24),
+                flow_node("CONCAT", circle=True, width=220, tooltip=tooltips.get("step_viz_x3dh_header_concat", "")),
+                ft.Text("↓", size=24),
+                flow_node("Header including X3DH data", combined_header_preview, width=620, height=110, full_value=combined_header_full, tooltip=tooltips.get("step_viz_x3dh_header_output", "")),
+            ],
+            spacing=6,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        steps.append({"title": "Add X3DH header data", "control": x3dh_control})
+
+    return steps
+
+
+def build_dr_send_phase3_steps(
+    step_data: SendStepVisualizationSnapshot,
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    sender = step_data.sender
+    receiver = step_data.receiver
+    plaintext_string = bytes_to_display_str(step_data.plaintext)
+    plaintext = preview_value(plaintext_string, limit=40)
+    cipher_full = step_data.cipher
+    mk_full = step_data.mk
+    before_cks_full = step_data.before.CKs
+    after_cks_full = step_data.after.CKs
+    before_dhs_pub_full = step_data.before.DHs_public
+    before_dhs_priv_full = step_data.before.DHs_private
+    after_dhs_pub_full = step_data.after.DHs_public
+    after_dhs_priv_full = step_data.after.DHs_private
+    cipher = last_n_chars(cipher_full, 8)
+    mk = last_n_chars(mk_full, 8)
+    before_cks = last_n_chars(before_cks_full, 8)
+    after_cks = last_n_chars(after_cks_full, 8)
+    before_ns = step_data.before.Ns
+    after_ns = step_data.after.Ns
+    before_pn = step_data.before.PN
+    before_dhs_pub = last_n_chars(before_dhs_pub_full, 8)
+    before_dhs_priv = last_n_chars(before_dhs_priv_full, 8)
+    after_dhs_pub = last_n_chars(after_dhs_pub_full, 8)
+    after_dhs_priv = last_n_chars(after_dhs_priv_full, 8)
+
+    encrypt_control = ft.Column(
+        controls=[
+            ft.Text("Encrypt plaintext", weight="bold"),
+            ft.Row(
+                controls=[
+                    flow_node("mk", mk, width=170, tooltip=tooltips.get("step_viz_encrypt_mk", ""), full_value=mk_full),
+                    flow_node("Plaintext", plaintext, width=170, tooltip=tooltips.get("step_viz_encrypt_plaintext", "")),
+                    flow_node("AD||header", width=170, tooltip=tooltips.get("step_viz_ad_header", "")),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=24,
+            ),
+            ft.Text("↓", size=24),
+            flow_node("ENCRYPT", circle=True, width=170, tooltip=tooltips.get("step_viz_encrypt_fn", "")),
+            ft.Text("↓", size=24),
+            flow_node("Ciphertext", cipher, width=170, tooltip=tooltips.get("step_viz_ciphertext", ""), full_value=cipher_full),
+        ],
+        spacing=6,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+
+    before_rows = [
         ("DHs_pub", before_dhs_pub, tooltips.get("DHs_pub", ""), before_dhs_pub_full),
         ("DHs_priv", before_dhs_priv, tooltips.get("DHs_priv", ""), before_dhs_priv_full),
         ("PN", str(before_pn), tooltips.get("step_viz_sent_before_pn", ""), None),
         ("Ns", str(before_ns), tooltips.get("step_viz_sent_before_ns", ""), None),
         ("CKs", before_cks, tooltips.get("step_viz_sent_before_cks", ""), before_cks_full),
     ]
-    step5_after_rows = [
+    after_rows = [
         ("DHs_pub", after_dhs_pub, tooltips.get("DHs_pub", ""), after_dhs_pub_full),
         ("DHs_priv", after_dhs_priv, tooltips.get("DHs_priv", ""), after_dhs_priv_full),
         ("PN", str(before_pn), tooltips.get("step_viz_sent_after_pn", ""), None),
         ("Ns", str(after_ns), tooltips.get("step_viz_sent_after_ns", ""), None),
         ("CKs", after_cks, tooltips.get("step_viz_sent_after_cks", ""), after_cks_full),
     ]
-    changed_step5_labels = compute_changed_labels(step5_before_rows, step5_after_rows)
+    changed_labels = compute_changed_labels(before_rows, after_rows)
 
-    step5_data_flow = ft.Column(
+    sent_control = ft.Column(
         controls=[
             ft.Text("Sent", weight="bold"),
             ft.Row(
                 controls=[
-                    flow_node(
-                        "Pending queue",
-                        f"ID: {step_data.pending_id}\n{sender} -> {receiver}",
-                        width=280,
-                        tooltip=tooltips.get("step_viz_pending_queue", ""),
-                    ),
+                    flow_node("Pending queue", f"ID: {step_data.pending_id}\n{sender} -> {receiver}", width=280, tooltip=tooltips.get("step_viz_pending_queue", "")),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
             ft.Divider(height=1),
-            build_before_after_panels(
-                "Party state before send", step5_before_rows,
-                "Party state after send", step5_after_rows,
-                highlight_labels=changed_step5_labels,
-            ),
+            build_before_after_panels("Party state before send", before_rows, "Party state after send", after_rows, highlight_labels=changed_labels),
         ],
         spacing=6,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    steps = [
-        {"title": "Data and party state", "control": step1_data_flow},
-        {"title": "Send chain step", "control": step2_data_flow},
-        {"title": "Create header and update state", "control": step3_data_flow},
+    return [
+        {"title": "Encrypt plaintext", "control": encrypt_control},
+        {"title": "Sent", "control": sent_control},
     ]
-    if step4_x3dh_header_merge is not None:
-        steps.append({"title": "Add X3DH header data", "control": step4_x3dh_header_merge})
-    steps.append({"title": "Encrypt plaintext", "control": step4_data_flow})
-    steps.append({"title": "Sent", "control": step5_data_flow})
+
+
+def show_sending_step_visualization_dialog(
+    page: ft.Page,
+    step_data: SendStepVisualizationSnapshot,
+    on_close: Callable[[], None] | None = None,
+) -> None:
+    tooltips = get_tooltip_messages("double_ratchet")
+    steps = [
+        *build_dr_send_phase1_steps(step_data, tooltips),
+        *build_dr_send_phase2_steps(step_data, tooltips),
+        *build_dr_send_phase3_steps(step_data, tooltips),
+    ]
     normalize_step_titles(steps)
     show_step_dialog(page, "Step-by-step visualization of sending steps", steps, on_close=on_close)
 
 
-def show_receiving_step_visualization_dialog(
-    page: ft.Page,
+def build_dr_receive_phase1_steps(
     step_data: ReceiveStepVisualizationSnapshot,
+    tooltips: dict[str, str],
     on_show_x3dh_bootstrap: Callable[[], None] | None = None,
-) -> None:
-    tooltips = get_tooltip_messages("double_ratchet")
-
-    sender = step_data.sender
-    receiver = step_data.receiver
+) -> list[dict[str, Any]]:
     cipher_full = step_data.cipher
     header_dh_full = step_data.header.dh
-    decrypted_string = bytes_to_display_str(step_data.decrypted)
-    plaintext = preview_value(decrypted_string, limit=40)
     cipher = last_n_chars(cipher_full, 8)
     header_preview = (
         f"dh={last_n_chars(header_dh_full, 8)}, "
         f"pn={step_data.header.pn}, n={step_data.header.n + 1}"
     )
-    mk_full = step_data.mk
-    mk = last_n_chars(mk_full, 8)
+    before_ckr_full = step_data.before.CKr
+    before_rk_full = step_data.before.RK
+    before_dhr_full = step_data.before.DHr or ""
+    before_dhs_pub_full = step_data.before.DHs_public
+    before_dhs_priv_full = step_data.before.DHs_private
+    before_nr = step_data.before.Nr
+
+    before_ckr = last_n_chars(before_ckr_full, 8)
+    before_rk = last_n_chars(before_rk_full, 8)
+    before_dhr = last_n_chars(before_dhr_full, 8)
+    before_dhs_pub = last_n_chars(before_dhs_pub_full, 8)
+    before_dhs_priv = last_n_chars(before_dhs_priv_full, 8)
 
     combined_header_full = None
     combined_header_preview = combined_dr_header_preview(
@@ -344,6 +339,103 @@ def show_receiving_step_visualization_dialog(
             step_data.x3dh_header,
         )
 
+    step1_data_flow = ft.Column(
+        controls=[
+            ft.Text("Incoming message and receiver state", weight="bold"),
+            ft.Row(
+                controls=[
+                    flow_node(
+                        "Complete header",
+                        combined_header_preview,
+                        width=460,
+                        tooltip=tooltips.get("step_viz_receive_header", ""),
+                        full_value=combined_header_full if combined_header_full is not None else f"dh={to_text(header_dh_full)}, pn={step_data.header.pn}, n={step_data.header.n + 1}",
+                    ),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+            ),
+            flow_node(
+                "Ciphertext",
+                cipher,
+                width=260,
+                tooltip=tooltips.get("step_viz_receive_ciphertext", ""),
+                full_value=cipher_full,
+            ),
+            ft.Divider(height=1),
+            party_state_panel(
+                "Receiver state before receive",
+                [
+                    ("DHs_pub", before_dhs_pub, tooltips.get("DHs_pub", ""), before_dhs_pub_full),
+                    ("DHs_priv", before_dhs_priv, tooltips.get("DHs_priv", ""), before_dhs_priv_full),
+                    ("DHr", before_dhr, tooltips.get("step_viz_receive_before_dhr", ""), before_dhr_full),
+                    ("RK", before_rk, tooltips.get("step_viz_receive_before_rk", ""), before_rk_full),
+                    ("CKr", before_ckr, tooltips.get("step_viz_receive_before_ckr", ""), before_ckr_full),
+                    ("Nr", str(before_nr), tooltips.get("step_viz_receive_before_nr", ""), None),
+                ],
+                tooltip=tooltips.get("step_viz_receive_before_panel", ""),
+            ),
+        ],
+        spacing=6,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+
+    steps: list[dict[str, Any]] = [
+        {
+            "title": "Incoming message and receiver state",
+            "control": step1_data_flow,
+        },
+    ]
+
+    if step_data.x3dh_header is not None:
+        steps.append(build_header_split_step(
+            protocol_label="X3DH",
+            combined_preview=combined_header_preview,
+            combined_full=combined_header_full,
+            message_header_preview=f"(dh, pn, n)={header_preview}",
+            message_header_full={
+                "dh": header_dh_full,
+                "pn": step_data.header.pn,
+                "n": step_data.header.n + 1,
+            },
+            protocol_header_preview=x3dh_header_preview(step_data.x3dh_header),
+            protocol_header_full=step_data.x3dh_header,
+            combined_tooltip=tooltips.get("step_viz_header_split_complete", ""),
+            split_tooltip=tooltips.get("step_viz_header_split_fn", ""),
+            message_header_tooltip=tooltips.get("step_viz_header_split_base", ""),
+            protocol_header_tooltip=tooltips.get("step_viz_header_split_x3dh", ""),
+            combined_width=460,
+            message_header_width=240,
+        ))
+        party_initialized = not step_data.was_x3dh_bootstrapped
+        steps.append(build_bootstrap_init_step(
+            title="X3DH bootstrap / initialization check",
+            was_bootstrapped=step_data.was_x3dh_bootstrapped,
+            protocol_header_label="X3DH header",
+            protocol_header_preview=x3dh_header_preview(step_data.x3dh_header),
+            protocol_header_full=step_data.x3dh_header,
+            on_show_bootstrap=on_show_x3dh_bootstrap,
+            button_label="Show X3DH bootstrap steps",
+            bootstrap_fn_label="X3DH Bootstrap",
+            bootstrap_fn_value="Initialize Double Ratchet state from X3DH",
+            party_tooltip=tooltips.get(
+                "step_viz_bootstrap_party_initialized" if party_initialized else "step_viz_bootstrap_party_not_initialized",
+                ""
+            ),
+            protocol_header_tooltip=tooltips.get("step_viz_bootstrap_x3dh_header", ""),
+            bootstrap_fn_tooltip=tooltips.get("step_viz_bootstrap_fn", ""),
+        ))
+
+    return steps
+
+
+def build_dr_receive_phase2_steps(
+    step_data: ReceiveStepVisualizationSnapshot,
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    header_dh_full = step_data.header.dh
+    mk_full = step_data.mk
+    mk = last_n_chars(mk_full, 8)
+
     before_ckr_full = step_data.before.CKr
     after_ckr_full = step_data.after.CKr
     before_rk_full = step_data.before.RK
@@ -358,7 +450,6 @@ def show_receiving_step_visualization_dialog(
     ckr_after_double_ratchet_full = step_data.ckr_after_double_ratchet
     ckr_before_kdf_ck_full = step_data.ckr_before_kdf_ck
     before_nr = step_data.before.Nr
-    after_nr = step_data.after.Nr
     skipped_key_hit = step_data.skipped_key_hit
     dh_ratchet_needed = step_data.dh_ratchet_needed
     fast_forward_count = step_data.fast_forward_count
@@ -379,8 +470,6 @@ def show_receiving_step_visualization_dialog(
     after_dhr = last_n_chars(after_dhr_full, 8)
     before_dhs_pub = last_n_chars(before_dhs_pub_full, 8)
     after_dhs_pub = last_n_chars(after_dhs_pub_full, 8)
-    before_dhs_priv = last_n_chars(before_dhs_priv_full, 8)
-    after_dhs_priv = last_n_chars(after_dhs_priv_full, 8)
     after_cks = last_n_chars(after_cks_full, 8)
     ckr_after_double_ratchet = last_n_chars(ckr_after_double_ratchet_full, 8)
     ckr_before_kdf_ck = last_n_chars(ckr_before_kdf_ck_full, 8)
@@ -431,46 +520,6 @@ def show_receiving_step_visualization_dialog(
     rk_after_kdf_rk1 = last_n_chars(rk_after_kdf_rk1_full, 8)
     ss_kdf_rk1 = last_n_chars(ss_kdf_rk1_full, 8)
     ss_kdf_rk2 = last_n_chars(ss_kdf_rk2_full, 8)
-
-    step1_data_flow = ft.Column(
-        controls=[
-            ft.Text("Incoming message and receiver state", weight="bold"),
-            ft.Row(
-                controls=[
-                    flow_node(
-                        "Complete header",
-                        combined_header_preview,
-                        width=460,
-                        tooltip=tooltips.get("step_viz_receive_header", ""),
-                        full_value=combined_header_full if combined_header_full is not None else f"dh={to_text(header_dh_full)}, pn={step_data.header.pn}, n={step_data.header.n + 1}",
-                    ),
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-            ),
-            flow_node(
-                "Ciphertext",
-                cipher,
-                width=260,
-                tooltip=tooltips.get("step_viz_receive_ciphertext", ""),
-                full_value=cipher_full,
-            ),
-            ft.Divider(height=1),
-            party_state_panel(
-                "Receiver state before receive",
-                [
-                    ("DHs_pub", before_dhs_pub, tooltips.get("DHs_pub", ""), before_dhs_pub_full),
-                    ("DHs_priv", before_dhs_priv, tooltips.get("DHs_priv", ""), before_dhs_priv_full),
-                    ("DHr", before_dhr, tooltips.get("step_viz_receive_before_dhr", ""), before_dhr_full),
-                    ("RK", before_rk, tooltips.get("step_viz_receive_before_rk", ""), before_rk_full),
-                    ("CKr", before_ckr, tooltips.get("step_viz_receive_before_ckr", ""), before_ckr_full),
-                    ("Nr", str(before_nr), tooltips.get("step_viz_receive_before_nr", ""), None),
-                ],
-                tooltip=tooltips.get("step_viz_receive_before_panel", ""),
-            ),
-        ],
-        spacing=6,
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-    )
 
     skipped_check_controls: list[ft.Control] = [
         ft.Text("Skipped-message key check", weight="bold"),
@@ -525,7 +574,7 @@ def show_receiving_step_visualization_dialog(
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    controls = [
+    sync_controls = [
         ft.Text("Sync Nr to header.n", weight="bold"),
         flow_node(
             "Check correlation",
@@ -535,7 +584,7 @@ def show_receiving_step_visualization_dialog(
         ),
     ]
     if fast_forward_count > 0:
-        controls.extend([
+        sync_controls.extend([
             ft.Text("↓", size=24),
             flow_node(
                 "SkipMessageKeys(state, n)",
@@ -549,9 +598,9 @@ def show_receiving_step_visualization_dialog(
             ),
         ])
     else:
-        controls.append(ft.Text("No fast forward needed", weight="bold"))
+        sync_controls.append(ft.Text("No fast forward needed", weight="bold"))
     skip_to_n_data_flow = ft.Column(
-        controls=controls,
+        controls=sync_controls,
         spacing=6,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
@@ -825,6 +874,92 @@ def show_receiving_step_visualization_dialog(
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
+    steps: list[dict[str, Any]] = [
+        {
+            "title": "Skipped-message key check",
+            "control": skipped_check_data_flow,
+        },
+    ]
+
+    if not skipped_key_hit:
+        steps.append(
+            {
+                "title": "Header DH decision",
+                "control": header_processing_data_flow,
+            }
+        )
+        if dh_ratchet_needed:
+            steps.append(
+                {
+                    "title": "DH ratchet update (part 1)",
+                    "control": step_dh_ratchet_data_flow_1,
+                }
+            )
+            steps.append(
+                {
+                    "title": "DH ratchet update (part 2)",
+                    "control": step_dh_ratchet_data_flow_2,
+                }
+            )
+            steps.append(
+                {
+                    "title": "DH ratchet update (part 3)",
+                    "control": step_dh_ratchet_data_flow_3,
+                }
+            )
+        steps.extend(
+            [
+                {
+                    "title": "Sync Nr to header.n",
+                    "control": skip_to_n_data_flow,
+                },
+                {
+                    "title": "Generate MK and advance CKr",
+                    "control": receive_chain_step_data_flow,
+                },
+            ]
+        )
+
+    return steps
+
+
+def build_dr_receive_phase3_steps(
+    step_data: ReceiveStepVisualizationSnapshot,
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    sender = step_data.sender
+    receiver = step_data.receiver
+    cipher_full = step_data.cipher
+    decrypted_string = bytes_to_display_str(step_data.decrypted)
+    plaintext = preview_value(decrypted_string, limit=40)
+    cipher = last_n_chars(cipher_full, 8)
+    mk_full = step_data.mk
+    mk = last_n_chars(mk_full, 8)
+
+    before_ckr_full = step_data.before.CKr
+    after_ckr_full = step_data.after.CKr
+    before_rk_full = step_data.before.RK
+    after_rk_full = step_data.after.RK
+    before_dhr_full = step_data.before.DHr or ""
+    after_dhr_full = step_data.after.DHr or ""
+    before_dhs_pub_full = step_data.before.DHs_public
+    after_dhs_pub_full = step_data.after.DHs_public
+    before_dhs_priv_full = step_data.before.DHs_private
+    after_dhs_priv_full = step_data.after.DHs_private
+    before_nr = step_data.before.Nr
+    after_nr = step_data.after.Nr
+
+    before_ckr = last_n_chars(before_ckr_full, 8)
+    after_ckr = last_n_chars(after_ckr_full, 8)
+    before_rk = last_n_chars(before_rk_full, 8)
+    after_rk = last_n_chars(after_rk_full, 8)
+    before_dhr = last_n_chars(before_dhr_full, 8)
+    after_dhr = last_n_chars(after_dhr_full, 8)
+    before_dhs_pub = last_n_chars(before_dhs_pub_full, 8)
+    after_dhs_pub = last_n_chars(after_dhs_pub_full, 8)
+    before_dhs_priv = last_n_chars(before_dhs_priv_full, 8)
+    after_dhs_priv = last_n_chars(after_dhs_priv_full, 8)
+
     decrypt_data_flow = ft.Column(
         controls=[
             ft.Text("Decrypt ciphertext", weight="bold"),
@@ -895,129 +1030,40 @@ def show_receiving_step_visualization_dialog(
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    steps = [
+    return [
         {
-            "title": "Incoming message and receiver state",
-            "control": step1_data_flow,
+            "title": "Decrypt ciphertext",
+            "control": decrypt_data_flow,
+        },
+        {
+            "title": "Received",
+            "control": received_summary_data_flow,
         },
     ]
 
-    if step_data.x3dh_header is not None:
-        steps.append(build_header_split_step(
-            protocol_label="X3DH",
-            combined_preview=combined_header_preview,
-            combined_full=combined_header_full,
-            message_header_preview=f"(dh, pn, n)={header_preview}",
-            message_header_full={
-                "dh": header_dh_full,
-                "pn": step_data.header.pn,
-                "n": step_data.header.n + 1,
-            },
-            protocol_header_preview=x3dh_header_preview(step_data.x3dh_header),
-            protocol_header_full=step_data.x3dh_header,
-            combined_tooltip=tooltips.get("step_viz_header_split_complete", ""),
-            split_tooltip=tooltips.get("step_viz_header_split_fn", ""),
-            message_header_tooltip=tooltips.get("step_viz_header_split_base", ""),
-            protocol_header_tooltip=tooltips.get("step_viz_header_split_x3dh", ""),
-            combined_width=460,
-            message_header_width=240,
-        ))
-        party_initialized = not step_data.was_x3dh_bootstrapped
-        steps.append(build_bootstrap_init_step(
-            title="X3DH bootstrap / initialization check",
-            was_bootstrapped=step_data.was_x3dh_bootstrapped,
-            protocol_header_label="X3DH header",
-            protocol_header_preview=x3dh_header_preview(step_data.x3dh_header),
-            protocol_header_full=step_data.x3dh_header,
-            on_show_bootstrap=on_show_x3dh_bootstrap,
-            button_label="Show X3DH bootstrap steps",
-            bootstrap_fn_label="X3DH Bootstrap",
-            bootstrap_fn_value="Initialize Double Ratchet state from X3DH",
-            party_tooltip=tooltips.get(
-                "step_viz_bootstrap_party_initialized" if party_initialized else "step_viz_bootstrap_party_not_initialized",
-                ""
-            ),
-            protocol_header_tooltip=tooltips.get("step_viz_bootstrap_x3dh_header", ""),
-            bootstrap_fn_tooltip=tooltips.get("step_viz_bootstrap_fn", ""),
-        ))
 
-    steps.append({
-        "title": "Skipped-message key check",
-        "control": skipped_check_data_flow,
-    })
-
-    if not skipped_key_hit:
-        steps.append(
-            {
-                "title": "Header DH decision",
-                "control": header_processing_data_flow,
-            }
-        )
-        if dh_ratchet_needed:
-            steps.append(
-                {
-                    "title": "DH ratchet update (part 1)",
-                    "control": step_dh_ratchet_data_flow_1,
-                }
-            )
-            steps.append(
-                {
-                    "title": "DH ratchet update (part 2)",
-                    "control": step_dh_ratchet_data_flow_2,
-                }
-            )
-            steps.append(
-                {
-                    "title": "DH ratchet update (part 3)",
-                    "control": step_dh_ratchet_data_flow_3,
-                }
-            )
-        steps.extend(
-            [
-                {
-                    "title": "Sync Nr to header.n",
-                    "control": skip_to_n_data_flow,
-                },
-                {
-                    "title": "Generate MK and advance CKr",
-                    "control": receive_chain_step_data_flow,
-                },
-            ]
-        )
-
-    steps.extend(
-        [
-            {
-                "title": "Decrypt ciphertext",
-                "control": decrypt_data_flow,
-            },
-            {
-                "title": "Received",
-                "control": received_summary_data_flow,
-            },
-        ]
-    )
-
+def show_receiving_step_visualization_dialog(
+    page: ft.Page,
+    step_data: ReceiveStepVisualizationSnapshot,
+    on_show_x3dh_bootstrap: Callable[[], None] | None = None,
+) -> None:
+    tooltips = get_tooltip_messages("double_ratchet")
+    steps = [
+        *build_dr_receive_phase1_steps(step_data, tooltips, on_show_x3dh_bootstrap),
+        *build_dr_receive_phase2_steps(step_data, tooltips),
+        *build_dr_receive_phase3_steps(step_data, tooltips),
+    ]
     normalize_step_titles(steps)
     show_step_dialog(page, "Step-by-step visualization of receiving steps", steps)
 
 
-def show_alice_x3dh_bootstrap_visualization_dialog(
-    page: ft.Page,
+def build_alice_x3dh_phase1_steps(
     x3dh_state_data: dict[str, Any] | None,
-    rk_after_init: bytes | None,
-    cks_after_init: bytes | None,
-    alice_dhs_pub: str,
-    alice_dhs_priv: str,
-    bob_spk_pub: str,
     session_ad: bytes,
-    on_close: Callable[[], None] | None = None,
-) -> None:
-    tooltips = get_tooltip_messages("x3dh")
-
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
     derived = {}
     bundle = {}
-    initial_header = {}
     alice_local = {}
     if isinstance(x3dh_state_data, dict):
         if isinstance(x3dh_state_data.get("alice_derived"), dict):
@@ -1026,34 +1072,16 @@ def show_alice_x3dh_bootstrap_visualization_dialog(
             bundle = x3dh_state_data.get("last_bundle_for_alice", {})
         if isinstance(x3dh_state_data.get("alice_local"), dict):
             alice_local = x3dh_state_data.get("alice_local", {})
-        initial_message = x3dh_state_data.get("initial_message")
-        if isinstance(initial_message, dict) and isinstance(initial_message.get("header"), dict):
-            initial_header = initial_message.get("header", {})
 
     sk = derived.get("shared_secret") if isinstance(derived.get("shared_secret"), str) else ""
     ad = derived.get("associated_data") if isinstance(derived.get("associated_data"), str) else session_ad.hex()
-    ek_pub = derived.get("ek_public") if isinstance(derived.get("ek_public"), str) else ""
-    ek_priv = derived.get("ek_private") if isinstance(derived.get("ek_private"), str) else ""
-    identity = alice_local.get("identity_dh") if isinstance(alice_local.get("identity_dh"), dict) else {}
-    ik_priv = identity.get("private") if isinstance(identity.get("private"), str) else ""
+    ik_priv = alice_local.get("identity_dh", {}).get("private") if isinstance(alice_local.get("identity_dh"), dict) else ""
     ik_b_pub = bundle.get("identity_dh_public") if isinstance(bundle.get("identity_dh_public"), str) else ""
-    ik_a_pub = initial_header.get("ik_a_public") if isinstance(initial_header.get("ik_a_public"), str) else ""
-    spk_b_pub = bundle.get("signed_prekey_public") if isinstance(bundle.get("signed_prekey_public"), str) else bob_spk_pub
+    ek_priv = derived.get("ek_private") if isinstance(derived.get("ek_private"), str) else ""
+    ek_pub = derived.get("ek_public") if isinstance(derived.get("ek_public"), str) else ""
+    spk_b_pub = bundle.get("signed_prekey_public") if isinstance(bundle.get("signed_prekey_public"), str) else ""
     opk_b_pub = bundle.get("opk_public") if isinstance(bundle.get("opk_public"), str) else ""
     spk_b_signature = bundle.get("signed_prekey_signature") if isinstance(bundle.get("signed_prekey_signature"), str) else ""
-    header_preview = (
-        f"ik_a={ik_a_pub}, "
-        f"ek_a={ek_pub}, "
-        f"spk_b={spk_b_pub}"
-        if initial_header
-        else "Header fields captured for Bob"
-    )
-    ss: bytes | None = None
-    if alice_dhs_priv and ik_b_pub:
-        try:
-            ss = ext.DH(DHKeyPair(private=alice_dhs_priv, public=alice_dhs_pub), ik_b_pub)
-        except ValueError:
-            ss = None
 
     step1 = ft.Column(
         controls=[
@@ -1118,6 +1146,7 @@ def show_alice_x3dh_bootstrap_visualization_dialog(
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
+    ik_a_pub = derived.get("ik_a_public") if isinstance(derived.get("ik_a_public"), str) else ""
     step4 = ft.Column(
         controls=[
             ft.Row(
@@ -1135,12 +1164,36 @@ def show_alice_x3dh_bootstrap_visualization_dialog(
             flow_node("AD", last_n_chars(ad, 8), width=460, full_value=ad, tooltip=tooltips.get("x3dh_step_key_ad", "")),
             ft.Divider(height=1),
             flow_node("X3DH header prefix", "IK_A_pub | EK_A_pub | Bob_SPK_pub | Bob_OPK_id", width=620, height=95,
-                       full_value=header_preview, tooltip=tooltips.get("x3dh_step_node_header", ""),
+                       full_value=f"ik_a={ik_a_pub}, ek_a={ek_pub}, spk_b={spk_b_pub}", tooltip=tooltips.get("x3dh_step_node_header", ""),
                        ),
         ],
         spacing=6,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
+
+    return [
+        {"title": "1) Receive Pre key Bundle from server", "control": step1},
+        {"title": "2) Verify SPK_B signature with IK_B", "control": step2},
+        {"title": "3) Derive SK from DH outputs", "control": step3},
+        {"title": "4) Calculate AD", "control": step4},
+    ]
+
+
+def build_alice_x3dh_phase2_steps(
+    sk: str,
+    rk_after_init: bytes | None,
+    cks_after_init: bytes | None,
+    alice_dhs_pub: str,
+    alice_dhs_priv: str,
+    bob_ik_pub: str,
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    ss: bytes | None = None
+    if alice_dhs_priv and bob_ik_pub:
+        try:
+            ss = ext.DH(DHKeyPair(private=alice_dhs_priv, public=alice_dhs_pub), bob_ik_pub)
+        except ValueError:
+            ss = None
 
     step5 = ft.Column(
         controls=[
@@ -1166,7 +1219,7 @@ def show_alice_x3dh_bootstrap_visualization_dialog(
             ft.Row(
                 controls=[
                     flow_node("DHs_priv", last_n_chars(alice_dhs_priv, 8), width=220, full_value=alice_dhs_priv, tooltip=tooltips.get("dr_bootstrap_dhs_priv", "")),
-                    flow_node("IK_B_pub", last_n_chars(ik_b_pub, 8), width=220, full_value=ik_b_pub, tooltip=tooltips.get("x3dh_step_key_ik_pub", "")),
+                    flow_node("IK_B_pub", last_n_chars(bob_ik_pub, 8), width=220, full_value=bob_ik_pub, tooltip=tooltips.get("x3dh_step_key_ik_pub", "")),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 spacing=16,
@@ -1209,30 +1262,51 @@ def show_alice_x3dh_bootstrap_visualization_dialog(
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    steps = [
-        {"title": "1) Receive Pre key Bundle from server", "control": step1},
-        {"title": "2) Verify SPK_B signature with IK_B", "control": step2},
-        {"title": "3) Derive SK from DH outputs", "control": step3},
-        {"title": "4) Calculate AD", "control": step4},
+    return [
         {"title": "5) Initialize Double Ratchet and calculate SS", "control": step5},
         {"title": "6) Derive RK and CKs", "control": step6},
     ]
-    show_step_dialog(page, "Alice X3DH -> Double Ratchet bootstrap", steps, on_close=on_close)
 
 
-def show_bob_x3dh_bootstrap_visualization_dialog(
+def show_alice_x3dh_bootstrap_visualization_dialog(
     page: ft.Page,
-    x3dh_header: dict[str, Any],
-    shared_secret: bytes | None,
+    x3dh_state_data: dict[str, Any] | None,
+    rk_after_init: bytes | None,
+    cks_after_init: bytes | None,
+    alice_dhs_pub: str,
+    alice_dhs_priv: str,
+    bob_spk_pub: str,
     session_ad: bytes,
-    bob_spk_public: str,
-    bob_spk_priv: str,
-    bob_ik_pub: str,
-    bob_ik_priv: str,
     on_close: Callable[[], None] | None = None,
 ) -> None:
     tooltips = get_tooltip_messages("x3dh")
 
+    derived = {}
+    bundle = {}
+    if isinstance(x3dh_state_data, dict):
+        if isinstance(x3dh_state_data.get("alice_derived"), dict):
+            derived = x3dh_state_data.get("alice_derived", {})
+        if isinstance(x3dh_state_data.get("last_bundle_for_alice"), dict):
+            bundle = x3dh_state_data.get("last_bundle_for_alice", {})
+
+    sk = derived.get("shared_secret") if isinstance(derived.get("shared_secret"), str) else ""
+    ik_b_pub = bundle.get("identity_dh_public") if isinstance(bundle.get("identity_dh_public"), str) else ""
+
+    steps = [
+        *build_alice_x3dh_phase1_steps(x3dh_state_data, session_ad, tooltips),
+        *build_alice_x3dh_phase2_steps(sk, rk_after_init, cks_after_init, alice_dhs_pub, alice_dhs_priv, ik_b_pub, tooltips),
+    ]
+    show_step_dialog(page, "Alice X3DH -> Double Ratchet bootstrap", steps, on_close=on_close)
+
+
+def build_bob_x3dh_phase1_steps(
+    x3dh_header: dict[str, Any],
+    shared_secret: bytes | None,
+    session_ad: bytes,
+    bob_spk_public: str,
+    bob_ik_pub: str,
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
     ik_a_pub = x3dh_header.get("ik_a_public") if isinstance(x3dh_header.get("ik_a_public"), str) else ""
     ek_a_pub = x3dh_header.get("ek_a_public") if isinstance(x3dh_header.get("ek_a_public"), str) else ""
     spk_b_pub = x3dh_header.get("bob_spk_public") if isinstance(x3dh_header.get("bob_spk_public"), str) else bob_spk_public
@@ -1291,7 +1365,7 @@ def show_bob_x3dh_bootstrap_visualization_dialog(
             ft.Row(
                 controls=[
                     flow_node("IK_A_pub", last_n_chars(ik_a_pub, 8), width=220, full_value=ik_a_pub, tooltip=tooltips.get("x3dh_step_key_ik_pub", "")),
-                    flow_node("IK_B_pub", last_n_chars(bob_spk_public, 8), width=220, full_value=bob_spk_public, tooltip=tooltips.get("x3dh_step_key_ik_pub", "")),
+                    flow_node("IK_B_pub", last_n_chars(bob_ik_pub, 8), width=220, full_value=bob_ik_pub, tooltip=tooltips.get("x3dh_step_key_ik_pub", "")),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 spacing=12,
@@ -1306,7 +1380,23 @@ def show_bob_x3dh_bootstrap_visualization_dialog(
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    step5 = ft.Column(
+    return [
+        {"title": "1) X3DH header extraction", "control": step1},
+        {"title": "2) Derive SK from DH outputs (same pattern as A)", "control": step2},
+        {"title": "3) Calculate AD", "control": step3},
+    ]
+
+
+def build_bob_x3dh_phase2_steps(
+    shared_secret: bytes | None,
+    session_ad: bytes,
+    bob_spk_public: str,
+    bob_spk_priv: str,
+    bob_ik_pub: str,
+    bob_ik_priv: str,
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    step4 = ft.Column(
         controls=[
             ft.Text("4) Set DHs and RK (Bob init state)", weight="bold"),
             ft.Row(
@@ -1343,7 +1433,7 @@ def show_bob_x3dh_bootstrap_visualization_dialog(
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    step6 = ft.Column(
+    step5 = ft.Column(
         controls=[
             ft.Text("5) Summary of set values", weight="bold"),
             party_state_panel(
@@ -1362,11 +1452,27 @@ def show_bob_x3dh_bootstrap_visualization_dialog(
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
+    return [
+        {"title": "4) Set DHs and RK (Bob init state)", "control": step4},
+        {"title": "5) Summary of set values", "control": step5},
+    ]
+
+
+def show_bob_x3dh_bootstrap_visualization_dialog(
+    page: ft.Page,
+    x3dh_header: dict[str, Any],
+    shared_secret: bytes | None,
+    session_ad: bytes,
+    bob_spk_public: str,
+    bob_spk_priv: str,
+    bob_ik_pub: str,
+    bob_ik_priv: str,
+    on_close: Callable[[], None] | None = None,
+) -> None:
+    tooltips = get_tooltip_messages("x3dh")
+
     steps = [
-        {"title": "1) X3DH header extraction", "control": step1},
-        {"title": "2) Derive SK from DH outputs (same pattern as A)", "control": step2},
-        {"title": "3) Calculate AD", "control": step3},
-        {"title": "4) Set DHs and RK (Bob init state)", "control": step5},
-        {"title": "5) Summary of set values", "control": step6},
+        *build_bob_x3dh_phase1_steps(x3dh_header, shared_secret, session_ad, bob_spk_public, bob_ik_pub, tooltips),
+        *build_bob_x3dh_phase2_steps(shared_secret, session_ad, bob_spk_public, bob_spk_priv, bob_ik_pub, bob_ik_priv, tooltips),
     ]
     show_step_dialog(page, "Bob X3DH -> Double Ratchet bootstrap", steps, on_close=on_close)

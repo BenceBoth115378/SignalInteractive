@@ -526,3 +526,104 @@ class SpqrSessionState:
     alice: SpqrRatchetState | None = None
     bob: SpqrRatchetState | None = None
     message_log: list[SpqrMessageState] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Triple Ratchet (DR + SPQR composed)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class TripleRatchetHeader:
+    dr: Header
+    spqr: SpqrHeader
+
+
+@dataclass
+class TripleRatchetPartyState:
+    name: str
+    dr: PartyState
+    spqr: SpqrRatchetState | None = None
+
+
+@dataclass
+class TripleRatchetSessionState:
+    alice: TripleRatchetPartyState | None = None
+    bob: TripleRatchetPartyState | None = None
+    message_log: list["TripleRatchetMessageState"] = field(default_factory=list)
+
+
+@dataclass
+class TripleRatchetMessageState:
+    sender: str
+    receiver: str
+    header: TripleRatchetHeader | None = None
+    cipher: bytes = b""
+    plaintext: bytes = b""
+    decrypted_by_receiver: bytes = b""
+    seq_id: int = 0
+    pqxdh_header: dict[str, Any] | None = None
+    ec_mk: bytes = b""
+    pq_mk: bytes = b""
+    mk: bytes = b""
+
+
+@dataclass
+class TripleRatchetPartyStateSnapshot:
+    dr_dhs_public: str = ""
+    dr_dhs_private: str = ""
+    dr_dhr: str = ""
+    dr_rk: bytes | None = None
+    dr_cks: bytes | None = None
+    dr_ckr: bytes | None = None
+    dr_ns: int = 0
+    dr_nr: int = 0
+    dr_pn: int = 0
+    spqr_rk: bytes | None = None
+    spqr_epoch: int = 0
+    spqr_direction: str = ""
+    spqr_state_name: str = ""
+    spqr_send_ck: bytes | None = None
+    spqr_recv_ck: bytes | None = None
+    spqr_scka_node: dict[str, Any] = field(default_factory=dict)
+    spqr_snapshot: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class TripleRatchetSendSnapshot:
+    sender: str
+    receiver: str
+    plaintext: bytes
+    header: TripleRatchetHeader
+    cipher: bytes
+    ec_mk: bytes
+    pq_mk: bytes
+    mk: bytes
+    AD: bytes
+    pending_id: int
+    before: TripleRatchetPartyStateSnapshot
+    after: TripleRatchetPartyStateSnapshot
+    dr_trace: dict = field(default_factory=dict)
+    spqr_trace: dict = field(default_factory=dict)
+    pqxdh_header: dict[str, Any] | None = None
+
+
+@dataclass
+class TripleRatchetReceiveSnapshot:
+    sender: str
+    receiver: str
+    pending_id: int
+    header: TripleRatchetHeader
+    cipher: bytes
+    ec_mk: bytes
+    pq_mk: bytes
+    mk: bytes
+    AD: bytes
+    decrypted: bytes
+    plaintext: bytes
+    before: TripleRatchetPartyStateSnapshot
+    after: TripleRatchetPartyStateSnapshot
+    dr_trace: dict = field(default_factory=dict)
+    spqr_trace: dict = field(default_factory=dict)
+    pqxdh_header: dict[str, Any] | None = None
+    was_pqxdh_bootstrapped: bool = False
+    dr_snapshot: "ReceiveStepVisualizationSnapshot | None" = None

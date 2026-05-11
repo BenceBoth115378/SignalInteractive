@@ -840,10 +840,7 @@ def _receive_keys_sampled(step_data: dict[str, Any], tooltips: dict[str, str]) -
                     ft.Text("↓", size=24),
                     var_node(label="Condition", value="msg.epoch == self.epoch and msg.type == Ct1", width=420, tooltip=_tt("spqr_step_state_op"), full_value=condition_met),
                     ft.Text("↓", size=24),
-                    func_node(
-                        "new Decoder()",
-                        "spqr_step_state_op",
-                    ),
+                    func_node("new Decoder()",),
                     ft.Text("↓", size=24),
                     var_node(
                         label="ct1_decoder",
@@ -863,11 +860,7 @@ def _receive_keys_sampled(step_data: dict[str, Any], tooltips: dict[str, str]) -
                     ft.Text("chunk -> Decoder add chunk", weight="bold"),
                     var_node("msg.data - Chunk", full_value=chunk, tooltip=_tt("spqr_step_chunk")),
                     ft.Text("↓", size=24),
-                    func_node(
-                        "Decoder.add_chunk",
-                        "spqr_step_state_op",
-                        full_value="ct1_decoder.add_chunk(chunk)",
-                    ),
+                    func_node("Decoder.add_chunk", full_value="ct1_decoder.add_chunk(chunk)"),
                 ],
                 spacing=6,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -934,11 +927,7 @@ def _receive_header_sent(step_data: dict[str, Any], tooltips: dict[str, str]) ->
                         wrap=True,
                     ),
                     ft.Text("↓", size=24),
-                    func_node(
-                        "Decoder.add_chunk",
-                        "spqr_step_state_op",
-                        full_value="ct1_decoder.add_chunk(chunk)",
-                    ),
+                    func_node("Decoder.add_chunk", full_value="ct1_decoder.add_chunk(chunk)"),
                 ],
                 spacing=6,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -949,11 +938,7 @@ def _receive_header_sent(step_data: dict[str, Any], tooltips: dict[str, str]) ->
             "control": ft.Column(
                 controls=[
                     ft.Text("Decoder has message()", weight="bold"),
-                    func_node(
-                        "Decoder.has_message",
-                        "spqr_step_state_op",
-                        full_value="ct1_decoder.has_message()",
-                    ),
+                    func_node("Decoder.has_message", full_value="ct1_decoder.has_message()"),
                     ft.Text("↓", size=24),
                     var_node(label="has_message", value=("yes" if has_message else "no"), width=220, tooltip=_tt("spqr_step_state_op"), full_value=has_message),
                     ft.Text("↓", size=24),
@@ -1009,11 +994,7 @@ def _receive_no_header_received(step_data: dict[str, Any], tooltips: dict[str, s
                     ft.Text("↓", size=24),
                     var_node("chunk", full_value=chunk, tooltip=_tt("spqr_step_chunk")),
                     ft.Text("↓", size=24),
-                    func_node(
-                        "Decoder.add_chunk",
-                        "spqr_step_state_op",
-                        full_value="header_decoder.add_chunk(chunk)",
-                    ),
+                    func_node("Decoder.add_chunk", full_value="header_decoder.add_chunk(chunk)"),
                     ft.Text("↓", size=24),
                     var_node("header with MAC", full_value=header_with_mac, tooltip=_tt("spqr_step_header_with_mac")),
                 ],
@@ -1133,11 +1114,7 @@ def _receive_ct1_sampled(step_data: dict[str, Any], tooltips: dict[str, str]) ->
                         ft.Text("Add EK chunk", weight="bold"),
                         var_node("chunk", full_value=chunk, tooltip=_tt("spqr_step_chunk")),
                         ft.Text("↓", size=24),
-                        func_node(
-                            "ek_decoder.add_chunk",
-                            "spqr_step_state_op",
-                            full_value="ek_decoder.add_chunk(chunk)",
-                        ),
+                        func_node("ek_decoder.add_chunk", full_value="ek_decoder.add_chunk(chunk)"),
                     ],
                     spacing=6,
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -1210,7 +1187,7 @@ def _receive_ct1_sampled(step_data: dict[str, Any], tooltips: dict[str, str]) ->
                         ft.Text("↓", size=24),
                         func_node(
                             "ek_decoder.add_chunk",
-                            "spqr_step_state_op",
+                       
                             full_value="ek_decoder.add_chunk(chunk)",
                         ),
                     ],
@@ -1294,11 +1271,7 @@ def _receive_ek_received_ct1_sampled(step_data: dict[str, Any], tooltips: dict[s
                         full_value=step_data.get("header").msg.to_dict() if isinstance(step_data.get("header"), SpqrHeader) else None,
                     ),
                     ft.Text("↓", size=24),
-                    func_node(
-                        "Encaps2 + MacCt",
-                        "spqr_step_state_op",
-                        full_value="ct2 = Encaps2(...); mac = MacCt(...)",
-                    ),
+                    func_node("Encaps2 + MacCt", full_value="ct2 = Encaps2(...); mac = MacCt(...)"),
                     ft.Text("↓", size=24),
                     func_node(
                         "state",
@@ -1346,11 +1319,7 @@ def _receive_ct1_acknowledged(step_data: dict[str, Any], tooltips: dict[str, str
                     ft.Text("↓", size=24),
                     var_node("chunk", full_value=chunk, tooltip=_tt("spqr_step_chunk")),
                     ft.Text("↓", size=24),
-                    func_node(
-                        "ek_decoder.add_chunk",
-                        "spqr_step_state_op",
-                        full_value="ek_decoder.add_chunk(chunk)",
-                    ),
+                    func_node("ek_decoder.add_chunk", full_value="ek_decoder.add_chunk(chunk)"),
                     ft.Text("↓", size=24),
                     var_node(
                         label="has_message",
@@ -1453,11 +1422,7 @@ def _receive_ct1_received(step_data: dict[str, Any], tooltips: dict[str, str]) -
                     ft.Text("↓", size=24),
                     var_node("chunk", full_value=chunk, tooltip=_tt("spqr_step_chunk")),
                     ft.Text("↓", size=24),
-                    func_node(
-                        "ct2_decoder = Decoder_new(CT2_SIZE + MAC_SIZE)",
-                        "spqr_step_state_op",
-                        full_value="ct2_decoder = Decoder_new(CT2_SIZE + MAC_SIZE)",
-                    ),
+                    func_node("ct2_decoder = Decoder_new(CT2_SIZE + MAC_SIZE)", full_value="ct2_decoder = Decoder_new(CT2_SIZE + MAC_SIZE)"),
                 ],
                 spacing=6,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -1468,11 +1433,7 @@ def _receive_ct1_received(step_data: dict[str, Any], tooltips: dict[str, str]) -
             "control": ft.Column(
                 controls=[
                     ft.Text("Add CT2 chunk", weight="bold"),
-                    func_node(
-                        "ct2_decoder.add_chunk",
-                        "spqr_step_state_op",
-                        full_value="ct2_decoder.add_chunk(chunk)",
-                    ),
+                    func_node("ct2_decoder.add_chunk", full_value="ct2_decoder.add_chunk(chunk)"),
                     ft.Text("↓", size=24),
                     func_node(
                         "state transition",
@@ -1521,11 +1482,7 @@ def _receive_ek_sent_ct1_received(step_data: dict[str, Any], tooltips: dict[str,
                     ft.Text("↓", size=24),
                     var_node("chunk", full_value=chunk, tooltip=_tt("spqr_step_chunk")),
                     ft.Text("↓", size=24),
-                    func_node(
-                        "ct2_decoder.add_chunk",
-                        "spqr_step_state_op",
-                        full_value="ct2_decoder.add_chunk(chunk)",
-                    ),
+                    func_node("ct2_decoder.add_chunk", full_value="ct2_decoder.add_chunk(chunk)"),
                 ],
                 spacing=6,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -1590,10 +1547,8 @@ def _build_receive_chain_steps(state_name: str, step_data: dict[str, Any], toolt
     return builder(step_data, tooltips)
 
 
-def _build_send_message_pipeline_steps(step_data: dict[str, Any], tooltips: dict[str, str]) -> list[dict[str, Any]]:
+def _build_send_message_pipeline_phase2_steps(step_data: dict[str, Any], tooltips: dict[str, str]) -> list[dict[str, Any]]:
     header: SpqrHeader | None = step_data.get("header") if isinstance(step_data.get("header"), SpqrHeader) else None
-    plaintext = step_data.get("plaintext")
-    ciphertext = step_data.get("cipher")
     encrypt_trace = step_data.get("encrypt_trace") if isinstance(step_data.get("encrypt_trace"), dict) else {}
 
     sending_epoch = encrypt_trace.get("sending_epoch", header.msg.epoch - 1 if header is not None else "-")
@@ -1601,7 +1556,6 @@ def _build_send_message_pipeline_steps(step_data: dict[str, Any], tooltips: dict
     chain_key_before = encrypt_trace.get("chain_key_before")
     chain_key_after = encrypt_trace.get("chain_key_after")
     mk = encrypt_trace.get("mk")
-    ad_header = encrypt_trace.get("ad_header")
 
     header_msg = header.msg if header is not None else None
     header_payload = {
@@ -1611,7 +1565,6 @@ def _build_send_message_pipeline_steps(step_data: dict[str, Any], tooltips: dict
 
     steps: list[dict[str, Any]] = []
 
-    # Message key derivation step
     steps.append(
         {
             "title": "Message key derivation",
@@ -1712,7 +1665,7 @@ def _build_send_message_pipeline_steps(step_data: dict[str, Any], tooltips: dict
                             wrap=True,
                         ),
                         ft.Text("↓", size=24),
-                        func_node("CONCAT", "pqxdh_step_node_verify_pq", width=220, tooltip=_tt("pqxdh_step_node_verify_pq")),
+                        func_node("CONCAT"),
                         ft.Text("↓", size=24),
                         var_node(label="Header including PQXDH data", value=combined_header_preview, width=620, height=110, full_value=combined_header_full, tooltip=_tt("pqxdh_step_node_verify_pq")),
                     ],
@@ -1722,7 +1675,17 @@ def _build_send_message_pipeline_steps(step_data: dict[str, Any], tooltips: dict
             }
         )
 
-    steps.append(
+    return steps
+
+
+def _build_send_message_pipeline_phase3_steps(step_data: dict[str, Any], tooltips: dict[str, str]) -> list[dict[str, Any]]:
+    plaintext = step_data.get("plaintext")
+    ciphertext = step_data.get("cipher")
+    encrypt_trace = step_data.get("encrypt_trace") if isinstance(step_data.get("encrypt_trace"), dict) else {}
+    mk = encrypt_trace.get("mk")
+    ad_header = encrypt_trace.get("ad_header")
+
+    return [
         {
             "title": "Encrypt message",
             "control": ft.Column(
@@ -1751,15 +1714,18 @@ def _build_send_message_pipeline_steps(step_data: dict[str, Any], tooltips: dict
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         }
-    )
-
-    return steps
+    ]
 
 
-def _build_receive_message_pipeline_steps(step_data: dict[str, Any], tooltips: dict[str, str]) -> list[dict[str, Any]]:
+def _build_send_message_pipeline_steps(step_data: dict[str, Any], tooltips: dict[str, str]) -> list[dict[str, Any]]:
+    return [
+        *_build_send_message_pipeline_phase2_steps(step_data, tooltips),
+        *_build_send_message_pipeline_phase3_steps(step_data, tooltips),
+    ]
+
+
+def _build_receive_message_pipeline_phase2_steps(step_data: dict[str, Any], tooltips: dict[str, str]) -> list[dict[str, Any]]:
     header: SpqrHeader | None = step_data.get("header") if isinstance(step_data.get("header"), SpqrHeader) else None
-    ciphertext = step_data.get("cipher")
-    decrypted = step_data.get("decrypted")
     receive_trace = step_data.get("receive_trace") if isinstance(step_data.get("receive_trace"), dict) else {}
 
     receiving_epoch = receive_trace.get("receiving_epoch", header.msg.epoch - 1 if header is not None else "-")
@@ -1768,12 +1734,8 @@ def _build_receive_message_pipeline_steps(step_data: dict[str, Any], tooltips: d
     chain_key_after = receive_trace.get("chain_key_after")
     mk = receive_trace.get("mk")
     used_skipped_key = bool(receive_trace.get("used_skipped_key", False))
-    ad_header = receive_trace.get("ad_header")
 
-    if used_skipped_key:
-        derivation_note = "MK restored from skipped-key store"
-    else:
-        derivation_note = "MK derived from receive chain"
+    derivation_note = "MK restored from skipped-key store" if used_skipped_key else "MK derived from receive chain"
 
     return [
         {
@@ -1825,6 +1787,17 @@ def _build_receive_message_pipeline_steps(step_data: dict[str, Any], tooltips: d
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         },
+    ]
+
+
+def _build_receive_message_pipeline_phase3_steps(step_data: dict[str, Any], tooltips: dict[str, str]) -> list[dict[str, Any]]:
+    ciphertext = step_data.get("cipher")
+    decrypted = step_data.get("decrypted")
+    receive_trace = step_data.get("receive_trace") if isinstance(step_data.get("receive_trace"), dict) else {}
+    mk = receive_trace.get("mk")
+    ad_header = receive_trace.get("ad_header")
+
+    return [
         {
             "title": "Decrypt message",
             "control": ft.Column(
@@ -1853,6 +1826,13 @@ def _build_receive_message_pipeline_steps(step_data: dict[str, Any], tooltips: d
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             ),
         },
+    ]
+
+
+def _build_receive_message_pipeline_steps(step_data: dict[str, Any], tooltips: dict[str, str]) -> list[dict[str, Any]]:
+    return [
+        *_build_receive_message_pipeline_phase2_steps(step_data, tooltips),
+        *_build_receive_message_pipeline_phase3_steps(step_data, tooltips),
     ]
 
 
@@ -1920,20 +1900,10 @@ def _build_after_step(
     }
 
 
-def show_alice_pqxdh_bootstrap_visualization_dialog(
-    page: ft.Page,
+def build_alice_pqxdh_phase1_steps(
     pqxdh_state_data: dict[str, Any] | None,
-    rk_after_init: bytes | None,
-    cks_after_init: bytes | None,
-    alice_scka_state: Any = None,
-    session_ad: bytes | None = None,
-    on_close: Callable[[], None] | None = None,
-) -> None:
-    tooltips = {
-        **get_tooltip_messages("pqxdh"),
-        **get_tooltip_messages("spqr"),
-    }
-
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
     derived = {}
     last_bundle = {}
     real_pqxdh_header = {}
@@ -1974,7 +1944,7 @@ def show_alice_pqxdh_bootstrap_visualization_dialog(
             wrap=True,
         ),
     ]
-    
+
     if opk_pub is not None:
         bundle_controls.append(
             ft.Row(
@@ -1985,7 +1955,7 @@ def show_alice_pqxdh_bootstrap_visualization_dialog(
                 spacing=10,
             )
         )
-    
+
     bundle_controls.extend([
         ft.Row(
             controls=[
@@ -1997,7 +1967,7 @@ def show_alice_pqxdh_bootstrap_visualization_dialog(
             wrap=True,
         ),
     ])
-    
+
     if pq_opk_pub is not None:
         bundle_controls.append(
             ft.Row(
@@ -2137,6 +2107,23 @@ def show_alice_pqxdh_bootstrap_visualization_dialog(
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
+    return [
+        {"title": "Alice requests Bob bundle", "control": step1},
+        {"title": "Alice verifies EC signature", "control": step2},
+        {"title": "Alice verifies PQ signature", "control": step3},
+        {"title": "Alice encapsulates ephemeral KEM", "control": step4},
+        {"title": "Alice derives shared secret SK", "control": step5},
+        {"title": "Alice computes AD and header prefix", "control": step6},
+    ]
+
+
+def build_alice_pqxdh_phase2_steps(
+    shared_secret: Any,
+    rk_after_init: bytes | None,
+    cks_after_init: bytes | None,
+    alice_scka_state: Any,
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
     ckr_value = None
     if alice_scka_state is not None and hasattr(alice_scka_state, "kdfchains"):
         try:
@@ -2170,48 +2157,59 @@ def show_alice_pqxdh_bootstrap_visualization_dialog(
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    steps = [
-        {"title": "Alice requests Bob bundle", "control": step1},
-        {"title": "Alice verifies EC signature", "control": step2},
-        {"title": "Alice verifies PQ signature", "control": step3},
-        {"title": "Alice encapsulates ephemeral KEM", "control": step4},
-        {"title": "Alice derives shared secret SK", "control": step5},
-        {"title": "Alice computes AD and header prefix", "control": step6},
+    return [
         {"title": "Alice initializes SPQR state", "control": step7},
     ]
-    normalize_step_titles(steps)
-    show_step_dialog(page, "SPQR Alice bootstrap", steps, on_close=on_close)
 
 
-def show_bob_pqxdh_bootstrap_visualization_dialog(
+def show_alice_pqxdh_bootstrap_visualization_dialog(
     page: ft.Page,
-    pqxdh_header: dict[str, Any] | None,
-    shared_secret: bytes | None,
-    session_ad: bytes | None,
-    bob_state: SpqrRatchetState | None,
-    bob_ik_public: str | None = None,
-    pq_shared_secret: bytes | None = None,
-    bob_pq_prekey_public: str | None = None,
+    pqxdh_state_data: dict[str, Any] | None,
+    rk_after_init: bytes | None,
+    cks_after_init: bytes | None,
+    alice_scka_state: Any = None,
+    session_ad: bytes | None = None,
     on_close: Callable[[], None] | None = None,
+    extra_steps: list[dict] | None = None,
+    dialog_title: str | None = None,
 ) -> None:
     tooltips = {
         **get_tooltip_messages("pqxdh"),
         **get_tooltip_messages("spqr"),
     }
 
-    header_preview = pqxdh_header_preview(pqxdh_header)
+    derived = {}
+    if isinstance(pqxdh_state_data, dict):
+        derived = pqxdh_state_data.get("alice_derived") if isinstance(pqxdh_state_data.get("alice_derived"), dict) else {}
+        if not derived:
+            derived = pqxdh_state_data
 
+    shared_secret = derived.get("shared_secret_hex") if isinstance(derived.get("shared_secret_hex"), str) else derived.get("shared_secret")
+
+    steps = [
+        *build_alice_pqxdh_phase1_steps(pqxdh_state_data, tooltips),
+        *build_alice_pqxdh_phase2_steps(shared_secret, rk_after_init, cks_after_init, alice_scka_state, tooltips),
+    ]
+    if extra_steps:
+        steps.extend(extra_steps)
+    normalize_step_titles(steps)
+    show_step_dialog(page, dialog_title or "SPQR Alice bootstrap", steps, on_close=on_close)
+
+
+def build_bob_pqxdh_phase1_steps(
+    pqxdh_header: dict[str, Any] | None,
+    shared_secret: Any,
+    session_ad: bytes | None,
+    pq_shared_secret: bytes | None,
+    bob_pq_prekey_public: str | None,
+    bob_ik_public: str | None,
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    header_preview = pqxdh_header_preview(pqxdh_header)
     ik_a_public = pqxdh_header.get("ik_a_public") if isinstance(pqxdh_header, dict) else None
     kem_ciphertext = pqxdh_header.get("pq_ciphertext") if isinstance(pqxdh_header, dict) else None
     if kem_ciphertext is None and isinstance(pqxdh_header, dict):
         kem_ciphertext = pqxdh_header.get("kem_ciphertext")
-
-    rk_value = bob_state.RK if bob_state is not None else None
-    chains = bob_state.kdfchains.get(bob_state.epoch) if bob_state is not None else None
-    ckr_value = chains.receive.CK if chains is not None and chains.receive is not None else None
-    cks_value = chains.send.CK if chains is not None and chains.send is not None else None
-    rk_after_init = rk_value
-    cks_after_init = cks_value
 
     step1 = ft.Column(
         controls=[
@@ -2224,17 +2222,12 @@ def show_bob_pqxdh_bootstrap_visualization_dialog(
                 tooltip=tooltips.get("pqxdh_step_node_verify_pq", ""),
             ),
             ft.Text("↓", size=24),
-            func_node(
-                "Extract components",
-                "spqr_step_state_op",
-                full_value="Extract ik_a, ek_a, bob_spk, pq_id, CT"
-            ),
+            func_node("Extract components", full_value="Extract ik_a, ek_a, bob_spk, pq_id, CT"),
         ],
         spacing=6,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    # Step 2: Decapsulate KEM
     step2 = ft.Column(
         controls=[
             ft.Text("2) Decapsulate KEM ciphertext", weight="bold"),
@@ -2248,11 +2241,7 @@ def show_bob_pqxdh_bootstrap_visualization_dialog(
                 wrap=True,
             ),
             ft.Text("↓", size=24),
-            func_node(
-                "PQKEM.Decaps",
-                "spqr_step_state_op",
-                full_value="CT + Bob_pq_privkey -> SS"
-            ),
+            func_node( "PQKEM.Decaps",full_value="CT + Bob_pq_privkey -> SS"),
             ft.Text("↓", size=24),
             var_node("SS (PQ shared secret)", full_value=pq_shared_secret, tooltip=tooltips.get("pqxdh_step_key_ss", "")),
         ],
@@ -2265,8 +2254,8 @@ def show_bob_pqxdh_bootstrap_visualization_dialog(
             ft.Text("3) Calculate shared secret SK", weight="bold"),
             ft.Row(
                 controls=[
-                    var_node("DH1", full_value="Bob_priv_spk + EK_A -> DH1", tooltip=tooltips.get("x3dh_step_node_dh", "")),
-                    var_node("DH2", full_value="Bob_priv_ik + EK_A -> DH2", tooltip=tooltips.get("x3dh_step_node_dh", "")),
+                    var_node("DH1", tooltip=tooltips.get("x3dh_step_node_dh", "")),
+                    var_node("DH2", tooltip=tooltips.get("x3dh_step_node_dh", "")),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 spacing=12,
@@ -2274,21 +2263,16 @@ def show_bob_pqxdh_bootstrap_visualization_dialog(
             ),
             ft.Row(
                 controls=[
-                    var_node("DH3", full_value="Bob_priv_spk + EK_A -> DH3", tooltip=tooltips.get("x3dh_step_node_dh", "")),
-                    var_node("DH4", full_value="Bob_priv_ik + EK_A -> DH4", tooltip=tooltips.get("x3dh_step_node_dh", "")),
+                    var_node("DH3", tooltip=tooltips.get("x3dh_step_node_dh", "")),
+                    var_node("DH4", tooltip=tooltips.get("x3dh_step_node_dh", "")),
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 spacing=12,
                 wrap=True,
             ),
-            var_node(
-                "SS (from PQKEM)", full_value=pq_shared_secret, tooltip=tooltips.get("pqxdh_step_key_ss", "")),
+            var_node("SS (from PQKEM)", full_value=pq_shared_secret, tooltip=tooltips.get("pqxdh_step_key_ss", "")),
             ft.Text("↓", size=24),
-            func_node(
-                "KDF_SK",
-                "spqr_step_state_op",
-                full_value="KDF_SK(DH1 || DH2 || DH3 || DH4 || SS)"
-            ),
+            func_node("KDF_SK", full_value="KDF_SK(DH1 || DH2 || DH3 || DH4 || SS)"),
             ft.Text("↓", size=24),
             var_node("SK", full_value=shared_secret, tooltip=tooltips.get("pqxdh_step_key_ss", "")),
         ],
@@ -2296,7 +2280,6 @@ def show_bob_pqxdh_bootstrap_visualization_dialog(
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    # Step 4: Calculate AD
     step4 = ft.Column(
         controls=[
             ft.Text("4) Calculate associated data AD", weight="bold"),
@@ -2318,17 +2301,33 @@ def show_bob_pqxdh_bootstrap_visualization_dialog(
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    # Step 5: Initialize SCKA
+    return [
+        {"title": "Extract PQXDH header", "control": step1},
+        {"title": "Decapsulate KEM ciphertext", "control": step2},
+        {"title": "Calculate shared secret SK", "control": step3},
+        {"title": "Calculate associated data AD", "control": step4},
+    ]
+
+
+def build_bob_pqxdh_phase2_steps(
+    shared_secret: Any,
+    session_ad: bytes | None,
+    bob_state: SpqrRatchetState | None,
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    rk_value = bob_state.RK if bob_state is not None else None
+    chains = bob_state.kdfchains.get(bob_state.epoch) if bob_state is not None else None
+    ckr_value = chains.receive.CK if chains is not None and chains.receive is not None else None
+    cks_value = chains.send.CK if chains is not None and chains.send is not None else None
+    rk_after_init = rk_value
+    cks_after_init = cks_value
+
     step5 = ft.Column(
         controls=[
             ft.Text("5) Initialize Bob SCKA state", weight="bold"),
             var_node("SK", full_value=shared_secret, tooltip=tooltips.get("pqxdh_step_key_ss", "")),
             ft.Text("↓", size=20),
-            func_node(
-                "RatchetInitBobSCKA",
-                "spqr_step_state_op",
-                full_value="RatchetInitBobSCKA(SK, AD)"
-            ),
+            func_node("RatchetInitBobSCKA",full_value="RatchetInitBobSCKA(SK, AD)"),
             ft.Text("↓", size=24),
             ft.Row(
                 controls=[
@@ -2352,15 +2351,233 @@ def show_bob_pqxdh_bootstrap_visualization_dialog(
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    steps = [
-        {"title": "Extract PQXDH header", "control": step1},
-        {"title": "Decapsulate KEM ciphertext", "control": step2},
-        {"title": "Calculate shared secret SK", "control": step3},
-        {"title": "Calculate associated data AD", "control": step4},
+    return [
         {"title": "Initialize Bob SCKA state", "control": step5},
     ]
+
+
+def show_bob_pqxdh_bootstrap_visualization_dialog(
+    page: ft.Page,
+    pqxdh_header: dict[str, Any] | None,
+    shared_secret: bytes | None,
+    session_ad: bytes | None,
+    bob_state: SpqrRatchetState | None,
+    bob_ik_public: str | None = None,
+    pq_shared_secret: bytes | None = None,
+    bob_pq_prekey_public: str | None = None,
+    on_close: Callable[[], None] | None = None,
+    extra_steps: list[dict] | None = None,
+    dialog_title: str | None = None,
+) -> None:
+    tooltips = {
+        **get_tooltip_messages("pqxdh"),
+        **get_tooltip_messages("spqr"),
+    }
+
+    steps = [
+        *build_bob_pqxdh_phase1_steps(pqxdh_header, shared_secret, session_ad, pq_shared_secret, bob_pq_prekey_public, bob_ik_public, tooltips),
+        *build_bob_pqxdh_phase2_steps(shared_secret, session_ad, bob_state, tooltips),
+    ]
+    if extra_steps:
+        steps.extend(extra_steps)
     normalize_step_titles(steps)
-    show_step_dialog(page, "SPQR Bob PQXDH bootstrap", steps, on_close=on_close)
+    show_step_dialog(page, dialog_title or "SPQR Bob PQXDH bootstrap", steps, on_close=on_close)
+
+
+def build_spqr_phase1_intro_steps(
+    before: dict[str, Any],
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    return [_build_intro_step(before, tooltips)]
+
+
+def build_spqr_phase2_pqxdh_receive_steps(
+    step_data: dict[str, Any],
+    header: SpqrHeader | None,
+    tooltips: dict[str, str],
+    on_show_pqxdh_bootstrap: Callable[[], None] | None = None,
+) -> list[dict[str, Any]]:
+    pqxdh_header = step_data.get("pqxdh_header") if isinstance(step_data.get("pqxdh_header"), dict) else None
+    if not isinstance(pqxdh_header, dict):
+        return []
+    header_msg = header.msg if header is not None else None
+    header_payload = {
+        "msg": header_msg.to_dict() if header_msg is not None else None,
+        "n": header.n if header is not None else None,
+    }
+    combined_header_full = {"header": header_payload, "pqxdh_header": pqxdh_header}
+    combined_header_preview = f"{_header_preview(header)} | pqxdh: {pqxdh_header_preview(pqxdh_header)}"
+    return [
+        build_header_split_step(
+            protocol_label="PQXDH",
+            combined_preview=combined_header_preview,
+            combined_full=combined_header_full,
+            message_header_preview=_header_preview(header),
+            message_header_full=header_payload,
+            protocol_header_preview=pqxdh_header_preview(pqxdh_header),
+            protocol_header_full=pqxdh_header,
+            combined_tooltip=tooltips.get("pqxdh_step_node_verify_pq", ""),
+            split_tooltip=tooltips.get("spqr_step_state_op", ""),
+            message_header_tooltip=tooltips.get("spqr_step_header", ""),
+            protocol_header_tooltip=tooltips.get("pqxdh_step_node_verify_pq", ""),
+            combined_width=620,
+            message_header_width=280,
+        ),
+        build_bootstrap_init_step(
+            title="PQXDH initialization (party bootstrap)",
+            was_bootstrapped=bool(step_data.get("was_pqxdh_bootstrapped", False)),
+            protocol_header_label="PQXDH header",
+            protocol_header_preview=pqxdh_header_preview(pqxdh_header),
+            protocol_header_full=pqxdh_header,
+            on_show_bootstrap=on_show_pqxdh_bootstrap,
+            button_label="Show Bob SPQR PQXDH bootstrap",
+            bootstrap_fn_label="PQXDH Bootstrap",
+            bootstrap_fn_value="Initialize SPQR state from PQXDH",
+            result_text="Bob was initialized during this receive",
+            party_initialized_text="Bob already initialized",
+            party_not_initialized_text="Bob not initialized yet",
+            party_tooltip=tooltips.get("spqr_step_state_op", ""),
+            protocol_header_tooltip=tooltips.get("pqxdh_step_node_verify_pq", ""),
+            bootstrap_fn_tooltip=tooltips.get("spqr_step_state_op", ""),
+            party_width=320,
+            protocol_header_width=420,
+            bootstrap_fn_width=360,
+            bootstrap_fn_height=90,
+        ),
+    ]
+
+
+def build_spqr_phase3_chain_steps(
+    action: str,
+    state_name: str,
+    step_data: dict[str, Any],
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    if action == "send":
+        return _build_send_steps(state_name, step_data, tooltips)
+    return _build_receive_chain_steps(state_name, step_data, tooltips)
+
+
+def build_spqr_phase4_key_steps(
+    action: str,
+    state_name: str,
+    before: dict[str, Any],
+    after: dict[str, Any],
+    header: SpqrHeader | None,
+    step_data: dict[str, Any],
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    steps: list[dict[str, Any]] = [
+        _build_output_key_step(action, state_name, before, after, header, tooltips),
+    ]
+    rk_step = _build_rk_derivation_step(action, state_name, before, after, step_data)
+    if rk_step is not None:
+        steps.append(rk_step)
+    return steps
+
+
+def build_spqr_phase5_pipeline_steps(
+    action: str,
+    step_data: dict[str, Any],
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    if action == "send":
+        return _build_send_message_pipeline_steps(step_data, tooltips)
+    return _build_receive_message_pipeline_steps(step_data, tooltips)
+
+
+def build_spqr_phase6_after_steps(
+    action: str,
+    state_name: str,
+    before: dict[str, Any],
+    after: dict[str, Any],
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    after_state = str(after.get("state", after.get("node", state_name)))
+    return [_build_after_step(action, after_state, before, after, tooltips)]
+
+
+def build_spqr_send_phase1_steps(
+    step_data: dict[str, Any],
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    before = step_data.get("before") if isinstance(step_data.get("before"), dict) else {}
+    return [_build_intro_step(before, tooltips)]
+
+
+def build_spqr_send_phase2_steps(
+    step_data: dict[str, Any],
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    before = step_data.get("before") if isinstance(step_data.get("before"), dict) else {}
+    after = step_data.get("after") if isinstance(step_data.get("after"), dict) else {}
+    header: SpqrHeader | None = step_data.get("header") if isinstance(step_data.get("header"), SpqrHeader) else None
+    state_name = str(before.get("state", before.get("node", "Unknown")))
+    steps = _build_send_steps(state_name, step_data, tooltips)
+    steps.append(_build_output_key_step("send", state_name, before, after, header, tooltips))
+    rk_step = _build_rk_derivation_step("send", state_name, before, after, step_data)
+    if rk_step is not None:
+        steps.append(rk_step)
+    steps.extend(_build_send_message_pipeline_phase2_steps(step_data, tooltips))
+    return steps
+
+
+def build_spqr_send_phase3_steps(
+    step_data: dict[str, Any],
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    before = step_data.get("before") if isinstance(step_data.get("before"), dict) else {}
+    after = step_data.get("after") if isinstance(step_data.get("after"), dict) else {}
+    state_name = str(before.get("state", before.get("node", "Unknown")))
+    after_state = str(after.get("state", after.get("node", state_name)))
+    return [
+        *_build_send_message_pipeline_phase3_steps(step_data, tooltips),
+        _build_after_step("send", after_state, before, after, tooltips),
+    ]
+
+
+def build_spqr_receive_phase1_steps(
+    step_data: dict[str, Any],
+    tooltips: dict[str, str],
+    on_show_pqxdh_bootstrap: Callable[[], None] | None = None,
+) -> list[dict[str, Any]]:
+    before = step_data.get("before") if isinstance(step_data.get("before"), dict) else {}
+    header: SpqrHeader | None = step_data.get("header") if isinstance(step_data.get("header"), SpqrHeader) else None
+    return [
+        _build_intro_step(before, tooltips),
+        *build_spqr_phase2_pqxdh_receive_steps(step_data, header, tooltips, on_show_pqxdh_bootstrap),
+    ]
+
+
+def build_spqr_receive_phase2_steps(
+    step_data: dict[str, Any],
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    before = step_data.get("before") if isinstance(step_data.get("before"), dict) else {}
+    after = step_data.get("after") if isinstance(step_data.get("after"), dict) else {}
+    header: SpqrHeader | None = step_data.get("header") if isinstance(step_data.get("header"), SpqrHeader) else None
+    state_name = str(before.get("state", before.get("node", "Unknown")))
+    steps = _build_receive_chain_steps(state_name, step_data, tooltips)
+    steps.append(_build_output_key_step("receive", state_name, before, after, header, tooltips))
+    rk_step = _build_rk_derivation_step("receive", state_name, before, after, step_data)
+    if rk_step is not None:
+        steps.append(rk_step)
+    steps.extend(_build_receive_message_pipeline_phase2_steps(step_data, tooltips))
+    return steps
+
+
+def build_spqr_receive_phase3_steps(
+    step_data: dict[str, Any],
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    before = step_data.get("before") if isinstance(step_data.get("before"), dict) else {}
+    after = step_data.get("after") if isinstance(step_data.get("after"), dict) else {}
+    state_name = str(before.get("state", before.get("node", "Unknown")))
+    after_state = str(after.get("state", after.get("node", state_name)))
+    return [
+        *_build_receive_message_pipeline_phase3_steps(step_data, tooltips),
+        _build_after_step("receive", after_state, before, after, tooltips),
+    ]
 
 
 def show_spqr_step_visualization_dialog(
@@ -2369,84 +2586,20 @@ def show_spqr_step_visualization_dialog(
     on_close: Callable[[], None] | None = None,
     on_show_pqxdh_bootstrap: Callable[[], None] | None = None,
 ) -> None:
-    tooltips = {
-        **get_tooltip_messages("spqr"),
-        **get_tooltip_messages("pqxdh"),
-    }
+    tooltips = {**get_tooltip_messages("spqr"), **get_tooltip_messages("pqxdh")}
     action = str(step_data.get("action", "send")).strip().lower()
+    before = step_data.get("before") if isinstance(step_data.get("before"), dict) else {}
     after = step_data.get("after") if isinstance(step_data.get("after"), dict) else {}
     header: SpqrHeader | None = step_data.get("header") if isinstance(step_data.get("header"), SpqrHeader) else None
-    before = step_data.get("before") if isinstance(step_data.get("before"), dict) else {}
     state_name = str(before.get("state", before.get("node", "Unknown")))
 
     steps: list[dict[str, Any]] = [
-        _build_intro_step(before, tooltips)
+        *build_spqr_phase1_intro_steps(before, tooltips),
+        *(build_spqr_phase2_pqxdh_receive_steps(step_data, header, tooltips, on_show_pqxdh_bootstrap) if action == "receive" else []),
+        *build_spqr_phase3_chain_steps(action, state_name, step_data, tooltips),
+        *build_spqr_phase4_key_steps(action, state_name, before, after, header, step_data, tooltips),
+        *build_spqr_phase5_pipeline_steps(action, step_data, tooltips),
+        *build_spqr_phase6_after_steps(action, state_name, before, after, tooltips),
     ]
-
-    if action == "receive":
-        pqxdh_header = step_data.get("pqxdh_header") if isinstance(step_data.get("pqxdh_header"), dict) else None
-        if isinstance(pqxdh_header, dict):
-            header_msg = header.msg if header is not None else None
-            header_payload = {
-                "msg": header_msg.to_dict() if header_msg is not None else None,
-                "n": header.n if header is not None else None,
-            }
-            combined_header_full = {"header": header_payload, "pqxdh_header": pqxdh_header}
-            combined_header_preview = f"{_header_preview(header)} | pqxdh: {pqxdh_header_preview(pqxdh_header)}"
-            steps.append(build_header_split_step(
-                protocol_label="PQXDH",
-                combined_preview=combined_header_preview,
-                combined_full=combined_header_full,
-                message_header_preview=_header_preview(header),
-                message_header_full=header_payload,
-                protocol_header_preview=pqxdh_header_preview(pqxdh_header),
-                protocol_header_full=pqxdh_header,
-                combined_tooltip=tooltips.get("pqxdh_step_node_verify_pq", ""),
-                split_tooltip=tooltips.get("spqr_step_state_op", ""),
-                message_header_tooltip=tooltips.get("spqr_step_header", ""),
-                protocol_header_tooltip=tooltips.get("pqxdh_step_node_verify_pq", ""),
-                combined_width=620,
-                message_header_width=280,
-            ))
-            steps.append(build_bootstrap_init_step(
-                title="PQXDH initialization (party bootstrap)",
-                was_bootstrapped=bool(step_data.get("was_pqxdh_bootstrapped", False)),
-                protocol_header_label="PQXDH header",
-                protocol_header_preview=pqxdh_header_preview(pqxdh_header),
-                protocol_header_full=pqxdh_header,
-                on_show_bootstrap=on_show_pqxdh_bootstrap,
-                button_label="Show Bob SPQR PQXDH bootstrap",
-                bootstrap_fn_label="PQXDH Bootstrap",
-                bootstrap_fn_value="Initialize SPQR state from PQXDH",
-                result_text="Bob was initialized during this receive",
-                party_initialized_text="Bob already initialized",
-                party_not_initialized_text="Bob not initialized yet",
-                party_tooltip=tooltips.get("spqr_step_state_op", ""),
-                protocol_header_tooltip=tooltips.get("pqxdh_step_node_verify_pq", ""),
-                bootstrap_fn_tooltip=tooltips.get("spqr_step_state_op", ""),
-                party_width=320,
-                protocol_header_width=420,
-                bootstrap_fn_width=360,
-                bootstrap_fn_height=90,
-            ))
-
-    chain_steps = (
-        _build_send_steps(state_name, step_data, tooltips)
-        if action == "send"
-        else _build_receive_chain_steps(state_name, step_data, tooltips)
-    )
-    steps.extend(chain_steps)
-
-    steps.append(_build_output_key_step(action, state_name, before, after, header, tooltips))
-    rk_derivation_step = _build_rk_derivation_step(action, state_name, before, after, step_data)
-    if rk_derivation_step is not None:
-        steps.append(rk_derivation_step)
-    if action == "send":
-        steps.extend(_build_send_message_pipeline_steps(step_data, tooltips))
-    if action == "receive":
-        steps.extend(_build_receive_message_pipeline_steps(step_data, tooltips))
-    steps.append(_build_after_step(action, str(after.get("state", after.get("node", state_name))), before, after, tooltips))
-
     normalize_step_titles(steps)
-    dialog_title = f"SPQR {action.capitalize()} visualization:"
-    show_step_dialog(page, dialog_title, steps, on_close=on_close)
+    show_step_dialog(page, f"SPQR {action.capitalize()} visualization:", steps, on_close=on_close)

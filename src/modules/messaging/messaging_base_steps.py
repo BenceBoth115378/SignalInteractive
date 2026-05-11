@@ -190,6 +190,20 @@ def pqxdh_header_preview(pqxdh_header: dict[str, Any] | None) -> str:
     return format_pqxdh_header_preview(pqxdh_header, last_n_chars)
 
 
+def dr_header_preview(header_dh: Any, header_pn: int, header_n_one_based: int) -> str:
+    return f"dh={last_n_chars(header_dh, 8)}, pn={header_pn}, n={header_n_one_based}"
+
+
+def spqr_header_preview(spqr_header: Any) -> str:
+    if spqr_header is None:
+        return "None"
+    msg = getattr(spqr_header, "msg", None)
+    epoch = getattr(msg, "epoch", "?")
+    msg_type = getattr(getattr(msg, "msg_type", None), "value", "?")
+    n = getattr(spqr_header, "n", "?")
+    return f"epoch={epoch}, type={msg_type}, n={n}"
+
+
 def combined_dr_header_preview(
     header_dh: Any,
     header_pn: int,

@@ -1,5 +1,6 @@
 ﻿from modules.messaging.double_ratchet.module import DoubleRatchetModule
 from modules.messaging.spqr.module import SPQRModule
+from modules.messaging.triple_ratchet.module import TripleRatchetModule
 from modules.key_exchange.pqxdh.module import PQXDHModule
 from modules.key_exchange.x3dh.module import X3DHModule
 
@@ -10,6 +11,7 @@ class Router:
         self.modules = {
             "double_ratchet": DoubleRatchetModule(),
             "spqr": SPQRModule(),
+            "triple_ratchet": TripleRatchetModule(),
             "pqxdh": PQXDHModule(),
             "x3dh": X3DHModule(),
         }
@@ -25,6 +27,12 @@ class Router:
                 "title": "SPQR",
                 "subtitle": "Sparse post-quantum messaging",
                 "description": "Sparse Post-Quantum Ratchet simulation with SPQR state-machine messaging and timeline interaction.",
+            },
+            "triple_ratchet": {
+                "id": "triple_ratchet",
+                "title": "Triple Ratchet",
+                "subtitle": "DR + SPQR composed",
+                "description": "Hybrid post-quantum messaging composing the classical Double Ratchet and SPQR in parallel, with a PQXDH-derived shared secret split across both ratchets and per-message keys combined via KDF.",
             },
             "x3dh": {
                 "id": "x3dh",
