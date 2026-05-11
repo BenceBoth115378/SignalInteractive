@@ -461,6 +461,7 @@ def build_timeline(
                     )
                 )
 
+            border = ft.Border.all(1, ft.Colors.OUTLINE_VARIANT)
             row = ft.Row(controls=row_controls, alignment=ft.MainAxisAlignment.START)
             col.controls.append(
                 _build_entry_container(
