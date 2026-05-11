@@ -5,7 +5,7 @@ from typing import Any, Callable
 from components.data_classes import (
     DHKeyPair,
     DoubleRatchetState,
-    Header,
+    DRHeader,
     KeyEvent,
     KeyHistory,
     MessageState,
@@ -201,7 +201,7 @@ def _deserialize_message(data: dict) -> MessageState:
         pn = header_data.get("pn")
         n = header_data.get("n")
         if isinstance(dh, str) and isinstance(pn, int) and isinstance(n, int):
-            header = Header(dh=dh, pn=pn, n=n)
+            header = DRHeader(dh=dh, pn=pn, n=n)
 
     plaintext = _decode_bytes_from_message(data.get("plaintext", b""))
     if not plaintext:
@@ -320,7 +320,7 @@ class DoubleRatchetModule(MessagingBaseModule):
                     "id": pending_id,
                     "sender": sender,
                     "receiver": receiver,
-                    "header": Header(dh=header_dh, pn=header_pn, n=header_n),
+                    "header": DRHeader(dh=header_dh, pn=header_pn, n=header_n),
                     "cipher": _decode_bytes_from_message(pending.get("cipher")),
                     "plaintext": _decode_bytes_from_message(pending.get("plaintext", b"")),
                     "x3dh_header": pending.get("x3dh_header") if isinstance(pending.get("x3dh_header"), dict) else None,

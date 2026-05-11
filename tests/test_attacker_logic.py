@@ -18,7 +18,7 @@ if str(SRC) not in sys.path:
 from components.data_classes import (   # noqa: E402
     DHKeyPair,
     DoubleRatchetState,
-    Header,
+    DRHeader,
     KeyEvent,
     MessageState,
     LimitedSkippedKeys,
@@ -66,10 +66,10 @@ def deterministic_crypto(monkeypatch: pytest.MonkeyPatch):
         mk = hashlib.sha256(ck + b"|msg").digest()
         return next_ck, mk
 
-    def fake_header(dh_pair: DHKeyPair, pn: int, n: int) -> Header:
-        return Header(dh=dh_pair.public, pn=pn, n=n)
+    def fake_header(dh_pair: DHKeyPair, pn: int, n: int) -> DRHeader:
+        return DRHeader(dh=dh_pair.public, pn=pn, n=n)
 
-    def fake_concat(ad: bytes, header: Header) -> bytes:
+    def fake_concat(ad: bytes, header: DRHeader) -> bytes:
         if ad is None:
             ad = b""
         payload = {"dh": header.dh, "pn": header.pn, "n": header.n}
@@ -111,7 +111,7 @@ def _bootstrap_session() -> DoubleRatchetState:
     return session
 
 
-def _add_send_history(session: DoubleRatchetState, seq_id: int, header: Header, chain_key: bytes) -> None:
+def _add_send_history(session: DoubleRatchetState, seq_id: int, header: DRHeader, chain_key: bytes) -> None:
     session.initializer.key_history.add_cks_event(
         KeyEvent(
             key_type="CK",
@@ -128,7 +128,7 @@ def _add_send_history(session: DoubleRatchetState, seq_id: int, header: Header, 
     )
 
 
-def _add_receive_history(session: DoubleRatchetState, seq_id: int, header: Header, chain_key: bytes, dh_changed: bool) -> None:
+def _add_receive_history(session: DoubleRatchetState, seq_id: int, header: DRHeader, chain_key: bytes, dh_changed: bool) -> None:
     session.responder.key_history.add_ckr_event(
         KeyEvent(
             key_type="CK",

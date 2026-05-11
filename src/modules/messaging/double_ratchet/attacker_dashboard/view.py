@@ -4,7 +4,7 @@ from typing import Any, Callable
 
 import flet as ft
 
-from components.data_classes import DHKeyPair, DoubleRatchetState, Header
+from components.data_classes import DHKeyPair, DoubleRatchetState, DRHeader
 from modules.base_view import last_n_chars
 from modules import external as ext
 from modules.messaging.messaging_base_view import get_key_display_label, get_key_tooltip_text
@@ -184,7 +184,7 @@ def _format_source_value(value: Any) -> str:
 def _try_decrypt_with_message_key(entry: dict[str, Any], mk: bytes, session_ad: bytes) -> str:
     header = entry.get("header")
     cipher = entry.get("cipher")
-    if not isinstance(header, Header) or not isinstance(cipher, bytes):
+    if not isinstance(header, DRHeader) or not isinstance(cipher, bytes):
         return ""
     if not isinstance(mk, bytes) or not mk:
         return ""
@@ -306,7 +306,7 @@ def decrypt_with_attacker_selection(
 
         for entry in messages:
             header = entry.get("header")
-            if not isinstance(header, Header):
+            if not isinstance(header, DRHeader):
                 continue
             if direction == "send" and entry.get("sender") != party:
                 continue
@@ -462,7 +462,7 @@ def decrypt_with_attacker_selection(
     def _iter_matching_dh_contexts(
         contexts: list[dict[str, Any]],
         direction: str,
-        header: Header,
+        header: DRHeader,
     ) -> list[dict[str, Any]]:
         if direction == "recv":
             matching = [
@@ -492,7 +492,7 @@ def decrypt_with_attacker_selection(
         peer_public_override: str | None = None,
     ) -> bool:
         header = entry.get("header")
-        if not isinstance(header, Header):
+        if not isinstance(header, DRHeader):
             return False
 
         start_n = ctx.get("start_n")
@@ -682,7 +682,7 @@ def decrypt_with_attacker_selection(
                     continue
 
                 header = entry.get("header")
-                if not isinstance(header, Header):
+                if not isinstance(header, DRHeader):
                     continue
 
                 if entry.get("receiver") == party:

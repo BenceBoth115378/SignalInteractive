@@ -97,7 +97,6 @@ def build_dr_send_phase2_steps(
         f"dh={last_n_chars(header_dh_full, 8)}, "
         f"pn={step_data.header.pn}, n={step_data.header.n + 1}"
     )
-    x3dh_header_full = step_data.x3dh_header if isinstance(step_data.x3dh_header, dict) else None
     cks_transition_full = f"old CKs: {to_text(before_cks_full)}\nnew CKs: {to_text(after_cks_full)}"
 
     send_chain_control = ft.Column(
@@ -157,36 +156,45 @@ def build_dr_send_phase2_steps(
         {"title": "Send chain step", "control": send_chain_control},
         {"title": "Create header and update state", "control": header_control},
     ]
-
-    if x3dh_header_full is not None:
-        combined_header_full = {
-            "header": {"dh": header_dh_full, "pn": step_data.header.pn, "n": step_data.header.n + 1},
-            "x3dh_header": x3dh_header_full,
-        }
-        combined_header_preview = combined_dr_header_preview(header_dh_full, step_data.header.pn, step_data.header.n + 1, x3dh_header_full)
-        x3dh_control = ft.Column(
-            controls=[
-                ft.Text("Add X3DH header data", weight="bold"),
-                ft.Row(
-                    controls=[
-                        flow_node("X3DH header", x3dh_header_preview(x3dh_header_full), width=420, full_value=x3dh_header_full, tooltip=tooltips.get("step_viz_x3dh_header_input", "")),
-                        flow_node("Header", header_preview, width=320, full_value={"dh": header_dh_full, "pn": step_data.header.pn, "n": step_data.header.n + 1}, tooltip=tooltips.get("step_viz_header_output", "")),
-                    ],
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    spacing=16,
-                    wrap=True,
-                ),
-                ft.Text("↓", size=24),
-                flow_node("CONCAT", circle=True, width=220, tooltip=tooltips.get("step_viz_x3dh_header_concat", "")),
-                ft.Text("↓", size=24),
-                flow_node("Header including X3DH data", combined_header_preview, width=620, height=110, full_value=combined_header_full, tooltip=tooltips.get("step_viz_x3dh_header_output", "")),
-            ],
-            spacing=6,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        )
-        steps.append({"title": "Add X3DH header data", "control": x3dh_control})
-
     return steps
+
+
+def build_dr_send_phase2_5_x3dh_steps(
+    step_data: SendStepVisualizationSnapshot,
+    tooltips: dict[str, str],
+) -> list[dict[str, Any]]:
+    x3dh_header_full = step_data.x3dh_header if isinstance(step_data.x3dh_header, dict) else None
+    if x3dh_header_full is None:
+        return []
+
+    header_dh_full = step_data.header.dh
+    combined_header_full = {
+        "header": {"dh": header_dh_full, "pn": step_data.header.pn, "n": step_data.header.n + 1},
+        "x3dh_header": x3dh_header_full,
+    }
+    combined_header_preview = combined_dr_header_preview(header_dh_full, step_data.header.pn, step_data.header.n + 1, x3dh_header_full)
+    x3dh_control = ft.Column(
+        controls=[
+            ft.Text("Add X3DH header data", weight="bold"),
+            ft.Row(
+                controls=[
+                    flow_node("X3DH header", x3dh_header_preview(x3dh_header_full), width=420, full_value=x3dh_header_full, tooltip=tooltips.get("step_viz_x3dh_header_input", "")),
+                    flow_node("Header", f"dh={last_n_chars(header_dh_full,8)}, pn={step_data.header.pn}, n={step_data.header.n + 1}", width=320, full_value={"dh": header_dh_full, "pn": step_data.header.pn, "n": step_data.header.n + 1}, tooltip=tooltips.get("step_viz_header_output", "")),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=16,
+                wrap=True,
+            ),
+            ft.Text("↓", size=24),
+            flow_node("CONCAT", circle=True, width=220, tooltip=tooltips.get("step_viz_x3dh_header_concat", "")),
+            ft.Text("↓", size=24),
+            flow_node("Header including X3DH data", combined_header_preview, width=620, height=110, full_value=combined_header_full, tooltip=tooltips.get("step_viz_x3dh_header_output", "")),
+        ],
+        spacing=6,
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+    return [{"title": "Add X3DH header data", "control": x3dh_control}]
+
 
 
 def build_dr_send_phase3_steps(
@@ -285,6 +293,7 @@ def show_sending_step_visualization_dialog(
     steps = [
         *build_dr_send_phase1_steps(step_data, tooltips),
         *build_dr_send_phase2_steps(step_data, tooltips),
+        *build_dr_send_phase2_5_x3dh_steps(step_data, tooltips),
         *build_dr_send_phase3_steps(step_data, tooltips),
     ]
     normalize_step_titles(steps)

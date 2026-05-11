@@ -150,7 +150,7 @@ class LimitedSkippedKeys(dict[tuple[str, int], bytes]):
 
 
 @dataclass
-class Header:
+class DRHeader:
     dh: str
     pn: int
     n: int
@@ -193,7 +193,7 @@ class MessageState:
     cipher: bytes
     decrypted_by_bob: bytes = b""
     decrypted_by_alice: bytes = b""
-    header: Header | None = None
+    header: DRHeader | None = None
     x3dh_header: dict[str, Any] | None = None
     plaintext: bytes = b""
     seq_id: int = 0
@@ -217,7 +217,7 @@ class SendStepVisualizationSnapshot:
     sender: str
     receiver: str
     plaintext: bytes
-    header: Header
+    header: DRHeader
     cipher: bytes
     mk: bytes
     pending_id: int
@@ -233,7 +233,7 @@ class ReceiveStepVisualizationSnapshot:
     sender: str
     receiver: str
     pending_id: int
-    header: Header
+    header: DRHeader
     cipher: bytes
     mk: bytes
     decrypted: bytes
@@ -534,7 +534,7 @@ class SpqrSessionState:
 
 @dataclass
 class TripleRatchetHeader:
-    dr: Header
+    dr: DRHeader
     spqr: SpqrHeader
 
 

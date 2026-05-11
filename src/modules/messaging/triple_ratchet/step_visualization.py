@@ -169,16 +169,11 @@ def _build_dr_receiving_step(snapshot: TripleRatchetReceiveSnapshot, page: ft.Pa
         "control": ft.Column(
             controls=[
                 ft.Text(title, weight="bold"),
-                ft.Row(
-                    controls=[
-                        var_node("DR header", value=dr_preview, full_value=str(dr), width=280),
-                        ft.Text("→", size=16),
-                        var_node("ec_mk", value=tail_hex(snapshot.ec_mk), full_value=snapshot.ec_mk.hex(), width=220),
-                    ],
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    spacing=12,
-                    wrap=True,
-                ),
+                var_node("DR header", value=dr_preview, full_value=dr, width=280),
+                ft.Text("↓", size=16),
+                func_node("Double Ratchet receive steps", width=220, height=70),
+                ft.Text("↓", size=16),
+                var_node("ec_mk", value=tail_hex(snapshot.ec_mk), full_value=snapshot.ec_mk.hex(), width=220),
                 ft.Button(
                     "Show DR steps",
                     on_click=lambda e: show_dr_visualization(),
@@ -242,16 +237,11 @@ def _build_dr_sending_step(snapshot: TripleRatchetSendSnapshot, page: ft.Page, o
         "control": ft.Column(
             controls=[
                 ft.Text(title, weight="bold"),
-                ft.Row(
-                    controls=[
-                        var_node("DR header", value=dr_preview, full_value=str(dr), width=280),
-                        ft.Text("→", size=16),
-                        var_node("ec_mk", value=tail_hex(snapshot.ec_mk), full_value=snapshot.ec_mk.hex(), width=220),
-                    ],
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    spacing=12,
-                    wrap=True,
-                ),
+                var_node("DR header", value=dr_preview, full_value=dr, width=280),
+                ft.Text("↓", size=16),
+                func_node("Double Ratchet send steps", width=220, height=70),
+                ft.Text("↓", size=16),
+                var_node("ec_mk", value=tail_hex(snapshot.ec_mk), full_value=snapshot.ec_mk.hex(), width=220),
                 ft.Button(
                     "Show DR steps",
                     on_click=lambda e: show_dr_visualization(),
@@ -290,16 +280,11 @@ def _build_spqr_sending_step(snapshot: TripleRatchetSendSnapshot, page: ft.Page,
         "control": ft.Column(
             controls=[
                 ft.Text(title, weight="bold"),
-                ft.Row(
-                    controls=[
-                        var_node("SPQR header", value=spqr_preview, full_value=str(spqr), width=280),
-                        ft.Text("→", size=16),
-                        var_node("pq_mk", value=tail_hex(snapshot.pq_mk), full_value=snapshot.pq_mk.hex(), width=220),
-                    ],
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    spacing=12,
-                    wrap=True,
-                ),
+                var_node("SPQR header", value=spqr_preview, full_value=spqr, width=280),
+                ft.Text("↓", size=16),
+                func_node("SPQR send steps", width=220, height=70),
+                ft.Text("↓", size=16),
+                var_node("pq_mk", value=tail_hex(snapshot.pq_mk), full_value=snapshot.pq_mk.hex(), width=220),
                 ft.Button(
                     "Show SPQR steps",
                     on_click=lambda e: show_spqr_visualization(),
@@ -314,24 +299,40 @@ def _build_spqr_sending_step(snapshot: TripleRatchetSendSnapshot, page: ft.Page,
 def _build_send_header_step(snapshot: TripleRatchetSendSnapshot) -> dict[str, Any]:
     dr = snapshot.header.dr
     spqr = snapshot.header.spqr
+    pqxdh = getattr(snapshot, "pqxdh_header", None)
+
     dr_preview = f"dh={last_n_chars(dr.dh)}, pn={dr.pn}, n={dr.n}"
     spqr_preview = f"epoch={spqr.msg.epoch}, type={spqr.msg.msg_type.value}, n={spqr.n}"
+    pqxdh_preview = pqxdh_header_preview(pqxdh) if pqxdh is not None else None
+
     title = "Header combination"
+
+    inputs = [
+        var_node("DR header", value=dr_preview, full_value=dr, width=280),
+        var_node("SPQR header", value=spqr_preview, full_value=spqr, width=280),
+    ]
+    if pqxdh_preview is not None:
+        inputs.append(var_node("PQXDH header", value=pqxdh_preview, full_value=pqxdh, width=420))
+
+    combined_value = f"dr: {dr_preview} | spqr: {spqr_preview}"
+    if pqxdh_preview is not None:
+        combined_value += f" | pqxdh: {pqxdh_preview}"
+
     return {
         "title": title,
         "control": ft.Column(
             controls=[
                 ft.Text(title, weight="bold"),
                 ft.Row(
-                    controls=[
-                        var_node("DR header", value=dr_preview, full_value=str(dr), width=280),
-                        var_node("SPQR header", value=spqr_preview, full_value=str(spqr), width=280),
-                    ],
+                    controls=inputs,
                     alignment=ft.MainAxisAlignment.CENTER,
                     spacing=12,
                     wrap=True,
                 ),
-                ft.Text("↓ combined into TripleRatchetHeader", size=12, italic=True),
+                ft.Text("↓", size=24),
+                func_node("COMBINE", width=260, height=70),
+                ft.Text("↓", size=24),
+                var_node("TripleRatchetHeader", value=combined_value, full_value=snapshot.header, width=620),
             ],
             spacing=8,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -366,16 +367,11 @@ def _build_spqr_receiving_step(snapshot: TripleRatchetReceiveSnapshot, page: ft.
         "control": ft.Column(
             controls=[
                 ft.Text(title, weight="bold"),
-                ft.Row(
-                    controls=[
-                        var_node("SPQR header", value=spqr_preview, full_value=str(spqr), width=280),
-                        ft.Text("→", size=16),
-                        var_node("pq_mk", value=tail_hex(snapshot.pq_mk), full_value=snapshot.pq_mk.hex(), width=220),
-                    ],
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    spacing=12,
-                    wrap=True,
-                ),
+                var_node("SPQR header", value=spqr_preview, full_value=spqr, width=280),
+                ft.Text("↓", size=16),
+                func_node("SPQR receive steps", width=220, height=70),
+                ft.Text("↓", size=16),
+                var_node("pq_mk", value=tail_hex(snapshot.pq_mk), full_value=snapshot.pq_mk.hex(), width=220),
                 ft.Button(
                     "Show SPQR steps",
                     on_click=lambda e: show_spqr_visualization(),
@@ -604,7 +600,7 @@ def show_triple_ratchet_receive_step_dialog(
     normalize_step_titles(steps)
     show_step_dialog(
         page,
-        dialog_title=f"Triple Ratchet — Receive step #{snapshot.pending_id} ({snapshot.sender} → {snapshot.receiver})",
+        dialog_title="Triple Ratchet — Receive step",
         steps=steps,
         on_close=on_close,
     )

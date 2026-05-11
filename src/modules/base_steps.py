@@ -4,6 +4,7 @@ from typing import Any, Callable
 
 import flet as ft
 
+from components.data_classes import DRHeader, SpqrHeader
 from modules.base_view import format_key, last_n_chars
 
 
@@ -11,6 +12,12 @@ def format_tooltip_value(value: Any, indent: int = 0) -> str:
     prefix = "  " * indent
     if value is None:
         return f"{prefix}None"
+
+    if isinstance(value, DRHeader):
+        value = {"dh": value.dh, "pn": value.pn, "n": value.n}
+    elif isinstance(value, SpqrHeader):
+        msg_val = value.msg.to_dict() if hasattr(value.msg, "to_dict") else str(value.msg)
+        value = {"msg": msg_val, "n": value.n}
 
     if isinstance(value, dict):
         if not value:

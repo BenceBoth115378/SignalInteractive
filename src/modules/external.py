@@ -20,7 +20,7 @@ from Crypto.Random import get_random_bytes
 from Crypto.Signature import eddsa
 from pqcrypto.kem import ml_kem_1024
 
-from components.data_classes import DHKeyPair, Header
+from components.data_classes import DHKeyPair, DRHeader
 
 MAX_SKIP = 50
 
@@ -50,7 +50,7 @@ def _expand_to_length(seed: bytes, length: int) -> bytes:
     return out[:length]
 
 
-def _encode_header(header: Header) -> bytes:
+def _encode_header(header: DRHeader) -> bytes:
     header_dict = {
         "dh": header.dh,
         "pn": header.pn,
@@ -163,13 +163,13 @@ def DECRYPT(mk: bytes, ciphertext: bytes, associated_data: bytes) -> bytes:
         raise ValueError("Authentication failed") from e
 
 
-def HEADER(dh_pair: DHKeyPair, pn: int, n: int) -> Header:
+def HEADER(dh_pair: DHKeyPair, pn: int, n: int) -> DRHeader:
     if dh_pair is None or dh_pair.public is None:
         raise ValueError("Invalid DH key pair")
-    return Header(dh=dh_pair.public, pn=pn, n=n)
+    return DRHeader(dh=dh_pair.public, pn=pn, n=n)
 
 
-def CONCAT(ad: bytes, header: Header) -> bytes:
+def CONCAT(ad: bytes, header: DRHeader) -> bytes:
     if ad is None:
         ad = b""
 

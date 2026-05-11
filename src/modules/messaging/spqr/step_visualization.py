@@ -1641,41 +1641,47 @@ def _build_send_message_pipeline_phase2_steps(step_data: dict[str, Any], tooltip
         }
     )
 
-    pqxdh_header = step_data.get("pqxdh_header") if isinstance(step_data.get("pqxdh_header"), dict) else None
-    if isinstance(pqxdh_header, dict):
-        pqxdh_preview = pqxdh_header_preview(pqxdh_header)
-        combined_header_full = {
-            "header": header_payload,
-            "pqxdh_header": pqxdh_header,
-        }
-        combined_header_preview = f"{_header_preview(header)} | pqxdh: {pqxdh_preview}"
-        steps.append(
-            {
-                "title": "Add PQXDH header data",
-                "control": ft.Column(
-                    controls=[
-                        ft.Text("Add PQXDH header data", weight="bold"),
-                        ft.Row(
-                            controls=[
-                                var_node(label="PQXDH header", value=pqxdh_preview, width=420, full_value=pqxdh_header, tooltip=_tt("pqxdh_step_node_verify_pq")),
-                                var_node(label="Header", value=_header_preview(header), width=320, full_value=header_payload, tooltip=_tt("spqr_step_header")),
-                            ],
-                            alignment=ft.MainAxisAlignment.CENTER,
-                            spacing=16,
-                            wrap=True,
-                        ),
-                        ft.Text("↓", size=24),
-                        func_node("CONCAT"),
-                        ft.Text("↓", size=24),
-                        var_node(label="Header including PQXDH data", value=combined_header_preview, width=620, height=110, full_value=combined_header_full, tooltip=_tt("pqxdh_step_node_verify_pq")),
-                    ],
-                    spacing=6,
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
-            }
-        )
-
     return steps
+
+
+def _build_send_phase2_5_pqxdh_steps(step_data: dict[str, Any], tooltips: dict[str, str]) -> list[dict[str, Any]]:
+    pqxdh_header = step_data.get("pqxdh_header") if isinstance(step_data.get("pqxdh_header"), dict) else None
+    header = step_data.get("header") if isinstance(step_data.get("header"), type(step_data.get("header"))) else None
+    if not isinstance(pqxdh_header, dict):
+        return []
+
+    pqxdh_preview = pqxdh_header_preview(pqxdh_header)
+    combined_header_full = {
+        "header": {"msg": header.msg.to_dict() if header is not None else None, "n": header.n if header is not None else None},
+        "pqxdh_header": pqxdh_header,
+    }
+    combined_header_preview = f"{_header_preview(header)} | pqxdh: {pqxdh_preview}"
+    return [
+        {
+            "title": "Add PQXDH header data",
+            "control": ft.Column(
+                controls=[
+                    ft.Text("Add PQXDH header data", weight="bold"),
+                    ft.Row(
+                        controls=[
+                            var_node(label="PQXDH header", value=pqxdh_preview, width=420, full_value=pqxdh_header, tooltip=_tt("pqxdh_step_node_verify_pq")),
+                            var_node(label="Header", value=_header_preview(header), width=320, full_value={"msg": header.msg.to_dict() if header is not None else None, "n": header.n if header is not None else None}, tooltip=_tt("spqr_step_header")),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=16,
+                        wrap=True,
+                    ),
+                    ft.Text("↓", size=24),
+                    func_node("CONCAT"),
+                    ft.Text("↓", size=24),
+                    var_node(label="Header including PQXDH data", value=combined_header_preview, width=620, height=110, full_value=combined_header_full, tooltip=_tt("pqxdh_step_node_verify_pq")),
+                ],
+                spacing=6,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+        }
+    ]
+
 
 
 def _build_send_message_pipeline_phase3_steps(step_data: dict[str, Any], tooltips: dict[str, str]) -> list[dict[str, Any]]:
@@ -1720,6 +1726,7 @@ def _build_send_message_pipeline_phase3_steps(step_data: dict[str, Any], tooltip
 def _build_send_message_pipeline_steps(step_data: dict[str, Any], tooltips: dict[str, str]) -> list[dict[str, Any]]:
     return [
         *_build_send_message_pipeline_phase2_steps(step_data, tooltips),
+        *_build_send_phase2_5_pqxdh_steps(step_data, tooltips),
         *_build_send_message_pipeline_phase3_steps(step_data, tooltips),
     ]
 

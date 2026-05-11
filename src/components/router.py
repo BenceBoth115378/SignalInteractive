@@ -32,7 +32,7 @@ class Router:
                 "id": "triple_ratchet",
                 "title": "Triple Ratchet",
                 "subtitle": "DR + SPQR composed",
-                "description": "Hybrid post-quantum messaging composing the classical Double Ratchet and SPQR in parallel, with a PQXDH-derived shared secret split across both ratchets and per-message keys combined via KDF.",
+                "description": "Hybrid post-quantum messaging composing the classical Double Ratchet and SPQR in parallel, with a PQXDH-derived shared secret split across both ratchets used for initialization and per-message keys combined via KDF for encryption and decryption.",
             },
             "x3dh": {
                 "id": "x3dh",

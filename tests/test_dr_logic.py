@@ -14,7 +14,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from components.data_classes import DHKeyPair, DoubleRatchetState, Header, PartyState  # noqa: E402
+from components.data_classes import DHKeyPair, DoubleRatchetState, DRHeader, PartyState  # noqa: E402
 from modules.messaging.double_ratchet import logic  # noqa: E402
 
 
@@ -52,10 +52,10 @@ def deterministic_crypto(monkeypatch: pytest.MonkeyPatch):
         mk = hashlib.sha256(ck + b"|msg").digest()
         return next_ck, mk
 
-    def fake_header(dh_pair: DHKeyPair, pn: int, n: int) -> Header:
-        return Header(dh=dh_pair.public, pn=pn, n=n)
+    def fake_header(dh_pair: DHKeyPair, pn: int, n: int) -> DRHeader:
+        return DRHeader(dh=dh_pair.public, pn=pn, n=n)
 
-    def fake_concat(ad: bytes, header: Header) -> bytes:
+    def fake_concat(ad: bytes, header: DRHeader) -> bytes:
         if ad is None:
             ad = b""
         payload = {"dh": header.dh, "pn": header.pn, "n": header.n}
@@ -96,7 +96,7 @@ def _bootstrap_session() -> tuple[DoubleRatchetState, PartyState, PartyState, by
     return session, session.initializer, session.responder, shared_secret
 
 
-def _decrypt_with_key(mk: bytes, header: Header, ciphertext: bytes, ad: bytes) -> bytes:
+def _decrypt_with_key(mk: bytes, header: DRHeader, ciphertext: bytes, ad: bytes) -> bytes:
     return logic.ext.DECRYPT(mk, ciphertext, logic.ext.CONCAT(ad, header))
 
 
@@ -221,7 +221,7 @@ def test_skip_message_keys_raises_when_skip_window_exceeded():
 
 def test_try_skipped_message_keys_returns_and_deletes_stored_key():
     state = PartyState(name="Bob")
-    header = Header(dh="alice-dh", pn=0, n=7)
+    header = DRHeader(dh="alice-dh", pn=0, n=7)
     state.MKSKIPPED[(header.dh, header.n)] = b"stored-message-key"
 
     mk = logic.TrySkippedMessageKeys(state, header)

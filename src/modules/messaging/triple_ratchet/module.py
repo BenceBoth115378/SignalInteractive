@@ -319,7 +319,7 @@ def _serialize_message(msg: TripleRatchetMessageState) -> dict:
 
 
 def _deserialize_message(data: dict) -> TripleRatchetMessageState | None:
-    from components.data_classes import Header, SpqrSckaMessage, SpqrHeader, TripleRatchetHeader
+    from components.data_classes import DRHeader, SpqrSckaMessage, SpqrHeader, TripleRatchetHeader
     header = None
     raw_header = data.get("header")
     if isinstance(raw_header, dict):
@@ -332,7 +332,7 @@ def _deserialize_message(data: dict) -> TripleRatchetMessageState | None:
             msg_raw = spqr_raw.get("msg")
             n_spqr = spqr_raw.get("n")
             if isinstance(dh, str) and isinstance(pn, int) and isinstance(n_dr, int) and isinstance(msg_raw, dict) and isinstance(n_spqr, int):
-                dr_header = Header(dh=dh, pn=pn, n=n_dr)
+                dr_header = DRHeader(dh=dh, pn=pn, n=n_dr)
                 spqr_msg = SpqrSckaMessage.from_dict(msg_raw)
                 spqr_header = SpqrHeader(msg=spqr_msg, n=n_spqr)
                 header = TripleRatchetHeader(dr=dr_header, spqr=spqr_header)

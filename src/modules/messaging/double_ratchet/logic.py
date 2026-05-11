@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from components.data_classes import DHKeyPair, Header, LimitedSkippedKeys, PartyState, DoubleRatchetState
+from components.data_classes import DHKeyPair, DRHeader, LimitedSkippedKeys, PartyState, DoubleRatchetState
 from modules import external as ext
 
 
@@ -62,13 +62,13 @@ def RatchetSendKey(state: PartyState) -> tuple[int, bytes]:
     return Ns, mk
 
 
-def RatchetEncrypt(state: PartyState, plaintext: bytes, AD: bytes) -> tuple[Header, bytes, bytes]:
+def RatchetEncrypt(state: PartyState, plaintext: bytes, AD: bytes) -> tuple[DRHeader, bytes, bytes]:
     Ns, mk = RatchetSendKey(state)
     header = ext.HEADER(_require_dh_pair(state), state.PN, Ns)
     return header, ext.ENCRYPT(mk, plaintext, ext.CONCAT(AD, header)), mk
 
 
-def RatchetReceiveKey(state: PartyState, header: Header, trace: dict[str, Any] | None = None) -> bytes:
+def RatchetReceiveKey(state: PartyState, header: DRHeader, trace: dict[str, Any] | None = None) -> bytes:
     mk = TrySkippedMessageKeys(state, header)
     if mk is not None:
         if trace is not None:
@@ -93,12 +93,12 @@ def RatchetReceiveKey(state: PartyState, header: Header, trace: dict[str, Any] |
     return mk
 
 
-def RatchetDecrypt(state: PartyState, header: Header, ciphertext: bytes, AD: bytes) -> bytes:
+def RatchetDecrypt(state: PartyState, header: DRHeader, ciphertext: bytes, AD: bytes) -> bytes:
     mk = RatchetReceiveKey(state, header)
     return ext.DECRYPT(mk, ciphertext, ext.CONCAT(AD, header))
 
 
-def TrySkippedMessageKeys(state: PartyState, header: Header) -> bytes | None:
+def TrySkippedMessageKeys(state: PartyState, header: DRHeader) -> bytes | None:
     if (header.dh, header.n) in state.MKSKIPPED:
         mk = state.MKSKIPPED[header.dh, header.n]
         del state.MKSKIPPED[header.dh, header.n]
@@ -117,7 +117,7 @@ def SkipMessageKeys(state: PartyState, until: int) -> None:
             state.Nr += 1
 
 
-def DHRatchet(state: PartyState, header: Header) -> None:
+def DHRatchet(state: PartyState, header: DRHeader) -> None:
     state.PN = state.Ns
     state.Ns = 0
     state.Nr = 0
