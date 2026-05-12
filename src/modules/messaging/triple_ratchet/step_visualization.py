@@ -233,11 +233,17 @@ def _build_dr_sending_step(snapshot: TripleRatchetSendSnapshot, page: ft.Page, o
         "control": ft.Column(
             controls=[
                 ft.Text(title, weight="bold"),
-                var_node("DR header", value=dr_preview, full_value=dr, width=280),
-                ft.Text("↓", size=16),
                 func_node("Double Ratchet send steps", width=220, height=70),
                 ft.Text("↓", size=16),
-                var_node("ec_mk", value=tail_hex(snapshot.ec_mk), full_value=snapshot.ec_mk.hex(), width=220),
+                ft.Row(
+                    controls=[
+                        var_node("DR header", value=dr_preview, full_value=dr, width=280),
+                        var_node("ec_mk", value=tail_hex(snapshot.ec_mk), full_value=snapshot.ec_mk.hex(), width=220),
+                    ],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=12,
+                    wrap=True,
+                ),
                 ft.Button(
                     "Show DR steps",
                     on_click=lambda e: show_dr_visualization(),
@@ -276,11 +282,17 @@ def _build_spqr_sending_step(snapshot: TripleRatchetSendSnapshot, page: ft.Page,
         "control": ft.Column(
             controls=[
                 ft.Text(title, weight="bold"),
-                var_node("SPQR header", value=spqr_preview, full_value=spqr, width=280),
-                ft.Text("↓", size=16),
                 func_node("SPQR send steps", width=220, height=70),
                 ft.Text("↓", size=16),
-                var_node("pq_mk", value=tail_hex(snapshot.pq_mk), full_value=snapshot.pq_mk.hex(), width=220),
+                ft.Row(
+                    controls=[
+                        var_node("SPQR header", value=spqr_preview, full_value=spqr, width=280),
+                        var_node("pq_mk (SPQR)", value=tail_hex(snapshot.pq_mk), full_value=snapshot.pq_mk.hex(), width=220),
+                    ],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=12,
+                    wrap=True,
+                ),
                 ft.Button(
                     "Show SPQR steps",
                     on_click=lambda e: show_spqr_visualization(),
