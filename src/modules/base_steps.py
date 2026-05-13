@@ -349,7 +349,7 @@ def show_step_dialog(
                 ft.Text("Click Next to continue to the following step."),
                 ft.Row(controls=[step_container], alignment=ft.MainAxisAlignment.CENTER),
             ],
-            alignment=ft.MainAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.START,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             expand=True,
             spacing=8,

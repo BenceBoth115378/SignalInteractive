@@ -9,6 +9,9 @@ from modules.base_steps import (
     var_node,
 )
 
+# Type alias for tooltip resolver functions
+TooltipResolver = Callable[[str], str]
+
 def last_n_chars(value: Any, count: int = 8) -> str:
     """Get last N characters of a hex/string value."""
     text = to_text(value)
@@ -319,8 +322,6 @@ def build_bootstrap_init_step(
             value=party_initialized_text if already_initialized else party_not_initialized_text,
             width=party_width,
             tooltip=party_tooltip,
-            bgcolor=ft.Colors.SECONDARY_CONTAINER if already_initialized else ft.Colors.ERROR_CONTAINER,
-            text_color=ft.Colors.ON_SECONDARY_CONTAINER if already_initialized else ft.Colors.ON_ERROR_CONTAINER,
         ),
         ft.Divider(height=1),
     ]
@@ -392,3 +393,232 @@ def build_before_after_panels(
         spacing=20,
         wrap=True,
     )
+
+
+def build_message_step(
+    build_title: str,
+    chunk: Any,
+    msg_epoch: Any,
+    msg_type_label: str,
+    msg_type_full: str,
+    tt: TooltipResolver,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "title": build_title,
+            "control": ft.Column(
+                controls=[
+                    ft.Text(build_title, weight="bold"),
+                    ft.Row(
+                        controls=[
+                            var_node("chunk", full_value=chunk, tooltip=tt("spqr_step_chunk_in_msg")),
+                            var_node("epoch", value=msg_epoch, tooltip=tt("spqr_step_epoch_in_msg")),
+                            var_node(
+                                "msg.type",
+                                value=msg_type_label,
+                                width=220,
+                                tooltip=tt("spqr_step_msg_type_in_msg"),
+                                full_value=msg_type_full,
+                            ),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=16,
+                        wrap=True,
+                    ),
+                    ft.Text("↓", size=24),
+                    func_node(
+                        "Build SpqrMessage",
+                        width=220,
+                        height=70,
+                        tooltip=tt("spqr_step_build_message"),
+                        full_value={
+                            "epoch": msg_epoch,
+                            "msg_type": msg_type_label,
+                            "data": chunk,
+                        },
+                    ),
+                    ft.Text("↓", size=24),
+                    ft.Row(
+                        controls=[
+                            var_node("epoch", value=msg_epoch, tooltip=tt("spqr_step_msg_epoch")),
+                            var_node(
+                                "msg.type",
+                                value=msg_type_label,
+                                width=220,
+                                tooltip=tt("spqr_step_msg_type"),
+                                full_value=msg_type_full,
+                            ),
+                            var_node("msg.data", full_value=chunk, tooltip=tt("spqr_step_msg_data")),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=16,
+                        wrap=True,
+                    ),
+                ],
+                spacing=6,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+        }
+    ]
+
+
+def build_send_result_step(
+    sending_epoch: Any,
+    output_key_label: str,
+    output_key: Any,
+    next_state: str,
+    tt: TooltipResolver,
+) -> dict[str, Any]:
+    return {
+        "title": "Send result",
+        "control": ft.Column(
+            controls=[
+                ft.Text("Send result", weight="bold"),
+                ft.Row(
+                    controls=[
+                        var_node("sending_epoch", value=sending_epoch, tooltip=tt("spqr_step_sending_epoch")),
+                        var_node(
+                            "output_key",
+                            value=output_key_label,
+                            width=220,
+                            tooltip=tt("spqr_step_output_key"),
+                            full_value=output_key,
+                        ),
+                        var_node(
+                            "next_state",
+                            value=next_state,
+                            width=220,
+                            tooltip=tt("spqr_step_next_state"),
+                            full_value=next_state,
+                        ),
+                    ],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=16,
+                    wrap=True,
+                ),
+            ],
+            spacing=6,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+    }
+
+
+def build_chunk_send_steps(
+    chunk: Any,
+    msg_epoch: Any,
+    sending_epoch: Any,
+    generate_title: str,
+    build_title: str,
+    chunk_expr: str,
+    msg_type_label: str,
+    msg_type_full: str,
+    next_state: str,
+    tt: TooltipResolver,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "title": generate_title,
+            "control": ft.Column(
+                controls=[
+                    ft.Text(generate_title, weight="bold"),
+                    func_node(
+                        "Encoder.next_chunk",
+                        tooltip=tt("spqr_step_next_chunk"),
+                    ),
+                    ft.Text("↓", size=24),
+                    var_node("chunk", full_value=chunk, tooltip=tt("spqr_step_chunk")),
+                ],
+                spacing=6,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+        },
+        *build_message_step(
+            build_title=build_title,
+            chunk=chunk,
+            msg_epoch=msg_epoch,
+            msg_type_label=msg_type_label,
+            msg_type_full=msg_type_full,
+            tt=tt,
+        ),
+        build_send_result_step(
+            sending_epoch=sending_epoch,
+            output_key_label="None",
+            output_key=None,
+            next_state=next_state,
+            tt=tt,
+        ),
+    ]
+
+
+def build_none_send_steps(
+    msg_epoch: Any,
+    sending_epoch: Any,
+    msg_type_label: str,
+    msg_type_full: str,
+    next_state: str,
+    tt: TooltipResolver,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "title": "Build message with no data to send",
+            "control": ft.Column(
+                controls=[
+                    ft.Text("Build message with no data to send", weight="bold"),
+                    ft.Row(
+                        controls=[
+                            var_node("data", value="None", width=220, tooltip=tt("spqr_step_chunk_in_msg"), full_value=None),
+                            var_node("epoch", value=msg_epoch, tooltip=tt("spqr_step_epoch_in_msg")),
+                            var_node(
+                                "msg.type",
+                                value=msg_type_label,
+                                width=220,
+                                tooltip=tt("spqr_step_msg_type_in_msg"),
+                                full_value=msg_type_full,
+                            ),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=16,
+                        wrap=True,
+                    ),
+                    ft.Text("↓", size=24),
+                    func_node(
+                        "Build SpqrMessage",
+                        width=220,
+                        height=70,
+                        tooltip=tt("spqr_step_build_message"),
+                        full_value={
+                            "epoch": msg_epoch,
+                            "msg_type": msg_type_label,
+                            "data": None,
+                        },
+                    ),
+                    ft.Text("↓", size=24),
+                    ft.Row(
+                        controls=[
+                            var_node("epoch", value=msg_epoch, tooltip=tt("spqr_step_msg_epoch")),
+                            var_node(
+                                "msg.type",
+                                value=msg_type_label,
+                                width=220,
+                                tooltip=tt("spqr_step_msg_type"),
+                                full_value=msg_type_full,
+                            ),
+                            var_node("msg.data", value="None", width=220, tooltip=tt("spqr_step_msg_data"), full_value=None),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=16,
+                        wrap=True,
+                    ),
+                ],
+                spacing=6,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+        },
+        build_send_result_step(
+            sending_epoch=sending_epoch,
+            output_key_label="None",
+            output_key=None,
+            next_state=next_state,
+            tt=tt,
+        ),
+    ]

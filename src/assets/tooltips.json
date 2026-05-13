@@ -218,6 +218,7 @@
     "spqr_step_ss_after_kdf": "Shared secret context after KDF_OK use, shown for authenticator update linkage.",
     "spqr_step_kdf_ok": "Derives output key material from shared secret and epoch in SPQR.",
     "spqr_step_kdf_scka_ck": "Advances chain key and derives per-message key (mk) for SPQR payload encryption/decryption.",
+    "spqr_step_kdf_scka_mk": "Per-message key (mk) derived by KDF_SCKA_CK and used to encrypt or decrypt the SPQR payload.",
     "spqr_step_key_evolution": "Cryptographic key evolution step connecting SCKA output and ratchet key updates.",
     "spqr_step_rk_change": "Indicates whether RK derivation is required because root key changed in this transition.",
     "CK_send": "Sending chain key used by SPQR to derive one-time message keys for outgoing payloads.",

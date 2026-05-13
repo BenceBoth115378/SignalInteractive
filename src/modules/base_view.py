@@ -6,6 +6,8 @@ def format_key(value) -> str:
         return "None"
     if isinstance(value, bytes):
         return value.hex()
+    if isinstance(value, list) and all(isinstance(item, int) and 0 <= item <= 255 for item in value):
+        return bytes(value).hex()
     if isinstance(value, dict):
         return str(value)
     if hasattr(value, "public") and hasattr(value, "private"):

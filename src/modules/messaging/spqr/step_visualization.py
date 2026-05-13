@@ -19,8 +19,6 @@ from modules.messaging.messaging_base_steps import (
     pqxdh_header_preview,
     build_header_split_step,
     build_bootstrap_init_step,
-)
-from modules.messaging.messaging_base_view import (
     build_chunk_send_steps,
     build_message_step,
     build_none_send_steps,
@@ -1123,7 +1121,7 @@ def _receive_ct1_sampled(step_data: dict[str, Any], tooltips: dict[str, str]) ->
                         ),
                         ft.Text("↓", size=24),
                         func_node(
-                            "state transition",
+                            "state transition" if completed else "remain in current state",
                             value="EkReceivedCt1Sampled" if completed else "Ct1Sampled",
                             width=260,
                             tooltip=_tt("spqr_step_next_state"),
@@ -1196,7 +1194,7 @@ def _receive_ct1_sampled(step_data: dict[str, Any], tooltips: dict[str, str]) ->
                         ),
                         ft.Text("↓", size=24),
                         func_node(
-                            "state transition",
+                            "state transition" if completed else "remain in current state",
                             value="Ct2Sampled" if completed else "Ct1Acknowledged",
                             width=300,
                             tooltip=_tt("spqr_step_next_state"),
@@ -1227,7 +1225,7 @@ def _receive_ct1_sampled(step_data: dict[str, Any], tooltips: dict[str, str]) ->
                     ),
                     ft.Text("↓", size=24),
                     func_node(
-                        "state transition",
+                        "remain in current state",
                         "Ct1Sampled (no-op)",
                         width=260,
                         tooltip=_tt("spqr_step_next_state"),
@@ -1318,7 +1316,7 @@ def _receive_ct1_acknowledged(step_data: dict[str, Any], tooltips: dict[str, str
                     ),
                     ft.Text("↓", size=24),
                     func_node(
-                        "state transition",
+                        "state transition" if completed else "remain in current state",
                         str(after.get("state", before.get("state"))),
                         width=260,
                         tooltip=_tt("spqr_step_next_state"),
@@ -1382,6 +1380,7 @@ def _receive_ct1_received(step_data: dict[str, Any], tooltips: dict[str, str]) -
     msg_epoch = header.msg.epoch if header is not None else before_node.get("epoch")
     msg_type = header.msg.msg_type.value if header is not None else None
     self_epoch = before_node.get("epoch")
+    completed = after.get("state", before.get("state")) != before.get("state")
 
     return [
         {
@@ -1424,7 +1423,7 @@ def _receive_ct1_received(step_data: dict[str, Any], tooltips: dict[str, str]) -
                     func_node("ct2_decoder.add_chunk", tooltip=_tt("spqr_step_decoder_add_chunk")),
                     ft.Text("↓", size=24),
                     func_node(
-                        "state transition",
+                        "state transition" if completed else "remain in current state",
                         str(after.get("state", before.get("state"))),
                         width=260,
                         tooltip=_tt("spqr_step_next_state"),
@@ -1580,7 +1579,7 @@ def _build_send_message_pipeline_phase2_steps(step_data: dict[str, Any], tooltip
                     ft.Row(
                         controls=[
                             var_node("new CKs", full_value=chain_key_after, tooltip=_tt("spqr_step_send_ck")),
-                            var_node("mk", full_value=mk, tooltip=_tt("spqr_step_output_key")),
+                            var_node("mk", full_value=mk, tooltip=_tt("spqr_step_kdf_scka_mk")),
                         ],
                         alignment=ft.MainAxisAlignment.CENTER,
                         spacing=16,
@@ -1601,7 +1600,7 @@ def _build_send_message_pipeline_phase2_steps(step_data: dict[str, Any], tooltip
                     ft.Text("Build SPQR header", weight="bold"),
                     ft.Row(
                         controls=[
-                            var_node("msg", full_value=_header_preview(header) if header is not None else "None", tooltip=_tt("spqr_step_header")),
+                            var_node("msg", full_value=_header_preview(header), tooltip=_tt("spqr_step_header")),
                             var_node("n", full_value=header.n if header is not None else None, tooltip=_tt("spqr_step_msg_epoch")),
                         ],
                         alignment=ft.MainAxisAlignment.CENTER,
