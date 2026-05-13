@@ -1,3 +1,11 @@
+"""View composition for the PQXDH demonstration.
+
+This module renders the hybrid key-exchange workspace used by PQXDH. It keeps
+the registration phase, hybrid shared-secret phase, and message phase aligned
+with the protocol state while exposing both the classical and post-quantum
+key material in the summary panels and tooltips.
+"""
+
 from __future__ import annotations
 
 from typing import Any

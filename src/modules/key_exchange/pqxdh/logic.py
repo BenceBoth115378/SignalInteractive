@@ -1,3 +1,12 @@
+"""Protocol logic for the PQXDH demonstration.
+
+The functions here extend the X3DH-style flow with a PQKEM component: Alice
+and Bob are bootstrapped with both classical and post-quantum prekeys, bundle
+requests select the appropriate hybrid material, Alice derives the shared
+secret from DH and PQ secrets, and Bob verifies and decrypts the resulting
+message state.
+"""
+
 from __future__ import annotations
 
 from components.data_classes import PQXDHState
@@ -11,10 +20,14 @@ from modules.key_exchange.key_exchange_base_logic import (
 
 
 def _generate_pq_key_pair() -> dict[str, str]:
+    """Return a normalized PQKEM key pair with public and private strings."""
+
     return ext.GENERATE_PQKEM_KEYPAIR()
 
 
 def _ensure_server_state(state: PQXDHState) -> dict:
+    """Return the server state dictionary, creating hybrid defaults as needed."""
+
     if not isinstance(state.server_state, dict):
         state.server_state = {}
 
@@ -40,6 +53,8 @@ def _ensure_server_state(state: PQXDHState) -> dict:
 
 
 def _update_alice_upload_opk_flag(state: PQXDHState, server_state: dict) -> None:
+    """Update the replenishment flag based on remaining Alice OPK stock."""
+
     remaining_min = min(
         len(server_state.get("alice_available_opk_ids", [])),
         len(server_state.get("alice_pq_available_opk_ids", [])),
@@ -48,6 +63,8 @@ def _update_alice_upload_opk_flag(state: PQXDHState, server_state: dict) -> None
 
 
 def bootstrap_bob_to_server(state: PQXDHState) -> None:
+    """Seed the server with Bob's classical and PQ prekey material."""
+
     server_state = _ensure_server_state(state)
 
     bob_identity = _generate_dh_key_pair()
@@ -112,6 +129,8 @@ def bootstrap_bob_to_server(state: PQXDHState) -> None:
 
 
 def new_state() -> PQXDHState:
+    """Create a fresh PQXDH demo state with Bob preloaded on the server."""
+
     state = PQXDHState(
         server_state={
             "alice_bundle": None,
@@ -135,6 +154,8 @@ def new_state() -> PQXDHState:
 
 
 def generate_alice_registration_material(state: PQXDHState) -> None:
+    """Generate Alice's classical and post-quantum registration material."""
+
     identity = _generate_dh_key_pair()
     signed_prekey = _generate_dh_key_pair()
     pq_signed_prekey = _generate_pq_key_pair()
@@ -187,6 +208,8 @@ def generate_alice_registration_material(state: PQXDHState) -> None:
 
 
 def upload_alice_initial_bundle(state: PQXDHState) -> None:
+    """Publish Alice's initial hybrid bundle, OPKs, and PQOPKs."""
+
     alice = ensure_alice_local(state)
     server_state = _ensure_server_state(state)
 
@@ -212,6 +235,8 @@ def upload_alice_initial_bundle(state: PQXDHState) -> None:
 
 
 def server_sends_alice_ec_opk_to_requester(state: PQXDHState) -> None:
+    """Consume one Alice classical OPK from the server."""
+
     server_state = _ensure_server_state(state)
     ec_available = server_state.get("alice_available_opk_ids", [])
 
@@ -227,6 +252,8 @@ def server_sends_alice_ec_opk_to_requester(state: PQXDHState) -> None:
 
 
 def server_sends_alice_pqopk_to_requester(state: PQXDHState) -> None:
+    """Consume one Alice post-quantum OPK from the server."""
+
     server_state = _ensure_server_state(state)
     pq_available = server_state.get("alice_pq_available_opk_ids", [])
 
@@ -242,6 +269,8 @@ def server_sends_alice_pqopk_to_requester(state: PQXDHState) -> None:
 
 
 def server_sends_bob_ec_opk_to_requester(state: PQXDHState) -> None:
+    """Consume one Bob classical OPK from the server."""
+
     server_state = _ensure_server_state(state)
     ec_available = server_state.get("bob_available_opk_ids", [])
 
@@ -255,6 +284,8 @@ def server_sends_bob_ec_opk_to_requester(state: PQXDHState) -> None:
 
 
 def server_sends_bob_pqopk_to_requester(state: PQXDHState) -> None:
+    """Consume one Bob post-quantum OPK from the server."""
+
     server_state = _ensure_server_state(state)
     pq_available = server_state.get("bob_pq_available_opk_ids", [])
 
@@ -268,6 +299,8 @@ def server_sends_bob_pqopk_to_requester(state: PQXDHState) -> None:
 
 
 def alice_uploads_new_opk(state: PQXDHState) -> None:
+    """Generate and publish a fresh Alice classical and PQ OPK pair."""
+
     alice = ensure_alice_local(state)
     server_state = _ensure_server_state(state)
 
@@ -306,6 +339,8 @@ def alice_uploads_new_opk(state: PQXDHState) -> None:
 
 
 def alice_rotates_signed_prekey_bundle(state: PQXDHState) -> None:
+    """Rotate Alice's classical and PQ signed prekey bundle."""
+
     alice = ensure_alice_local(state)
     server_state = _ensure_server_state(state)
 
@@ -335,6 +370,8 @@ def alice_rotates_signed_prekey_bundle(state: PQXDHState) -> None:
 
 
 def request_bob_bundle_for_alice(state: PQXDHState) -> None:
+    """Fetch Bob's hybrid bundle and optional OPKs for Alice."""
+
     server = _ensure_server_state(state)
     bob_bundle = server.get("bob_bundle")
     if not isinstance(bob_bundle, dict):
@@ -395,6 +432,8 @@ def request_bob_bundle_for_alice(state: PQXDHState) -> None:
 
 
 def alice_verifies_bundle_signature(state: PQXDHState) -> None:
+    """Verify Bob's classical and PQ signatures before derivation."""
+
     bundle = state.last_bundle_for_alice
     if not isinstance(bundle, dict):
         raise ValueError("Alice must request Bob prekey bundle first.")
@@ -435,6 +474,8 @@ def alice_verifies_bundle_signature(state: PQXDHState) -> None:
 
 
 def alice_generates_ek_and_derives_sk(state: PQXDHState) -> None:
+    """Generate Alice's ephemeral key and derive the hybrid shared secret."""
+
     if not state.phase2_signature_verified:
         raise ValueError("Verify bundle signatures before deriving SK.")
 
@@ -483,6 +524,8 @@ def alice_generates_ek_and_derives_sk(state: PQXDHState) -> None:
 
 
 def alice_sends_initial_message(state: PQXDHState, plaintext: str) -> None:
+    """Build the initial PQXDH message and store its ciphertext payload."""
+
     alice = ensure_alice_local(state)
     derived = state.alice_derived
     bundle = state.last_bundle_for_alice
@@ -536,6 +579,8 @@ def alice_sends_initial_message(state: PQXDHState, plaintext: str) -> None:
 
 
 def bob_receives_and_verifies(state: PQXDHState) -> None:
+    """Let Bob derive the hybrid secret and verify Alice's transmitted state."""
+
     bob = ensure_bob_local(state)
     msg = state.initial_message
     if not isinstance(msg, dict):

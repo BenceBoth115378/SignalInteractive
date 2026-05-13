@@ -1,3 +1,11 @@
+"""Triple Ratchet messaging controller.
+
+This module adapts the hybrid PQXDH-backed Triple Ratchet session to the
+interactive messaging UI. It handles state import/export, lazy Bob bootstrap,
+message send and receive flows, key-history tracking, and the optional step
+visualization dialogs shown after each action.
+"""
+
 from __future__ import annotations
 
 import json
@@ -88,6 +96,8 @@ from modules.key_exchange.pqxdh.logic import (
 
 
 def _class_map() -> dict[str, type]:
+    """Return the dataclass/class map used when decoding nested module state."""
+
     return {
         "SpqrMessageType": SpqrMessageType,
         "SpqrSckaMessage": SpqrSckaMessage,
@@ -119,6 +129,8 @@ def _class_map() -> dict[str, type]:
 
 
 def _snapshot_dr(state: PartyState) -> PartyStateSnapshot:
+    """Capture a lightweight snapshot of the embedded Double Ratchet state."""
+
     return PartyStateSnapshot(
         DHs_public=state.DHs.public if state.DHs else "",
         DHs_private=state.DHs.private if state.DHs else "",
@@ -133,6 +145,8 @@ def _snapshot_dr(state: PartyState) -> PartyStateSnapshot:
 
 
 def _node_snapshot(node: object | None) -> dict[str, Any]:
+    """Recursively snapshot a dataclass node for visualization and persistence."""
+
     if not is_dataclass(node):
         return {}
 
@@ -152,6 +166,8 @@ def _node_snapshot(node: object | None) -> dict[str, Any]:
 
 
 def _snapshot_spqr(spqr: SpqrRatchetState | None) -> dict[str, Any]:
+    """Capture the current SPQR state in a serializable snapshot form."""
+
     if spqr is None:
         return {"state": "Uninitialized", "epoch": 0, "direction": "", "rk_tail": "", "send_ck_tail": "", "recv_ck_tail": ""}
     chains = spqr.kdfchains.get(spqr.epoch)
@@ -173,6 +189,8 @@ def _snapshot_spqr(spqr: SpqrRatchetState | None) -> dict[str, Any]:
 
 
 def _snapshot_party(party: TripleRatchetPartyState) -> TripleRatchetPartyStateSnapshot:
+    """Combine the DR and SPQR snapshots for a Triple Ratchet party."""
+
     dr = _snapshot_dr(party.dr)
     spqr_snap = _snapshot_spqr(party.spqr)
     return TripleRatchetPartyStateSnapshot(
@@ -197,12 +215,16 @@ def _snapshot_party(party: TripleRatchetPartyState) -> TripleRatchetPartyStateSn
 
 
 def _encode_bytes(value: Any) -> Any:
+    """Encode bytes as a tagged hex payload for JSON-compatible storage."""
+
     if isinstance(value, bytes):
         return {"__bytes__": value.hex()}
     return value
 
 
 def _decode_bytes(value: Any) -> Any:
+    """Decode a tagged hex payload back into bytes when possible."""
+
     if isinstance(value, dict) and len(value) == 1 and isinstance(value.get("__bytes__"), str):
         try:
             return bytes.fromhex(value["__bytes__"])
@@ -212,6 +234,8 @@ def _decode_bytes(value: Any) -> Any:
 
 
 def _serialize_dr_party(state: PartyState) -> dict:
+    """Serialize a Double Ratchet party state for persistence."""
+
     skipped = [
         {"dh": dh, "n": n, "mk": _encode_bytes(mk)}
         for (dh, n), mk in state.MKSKIPPED.items()
@@ -232,6 +256,8 @@ def _serialize_dr_party(state: PartyState) -> dict:
 
 
 def _deserialize_key_event(data: Any) -> KeyEvent | None:
+    """Rebuild a KeyEvent instance from serialized nested state."""
+
     if not isinstance(data, dict):
         return None
     used_for_raw = data.get("used_for", [])
@@ -254,6 +280,8 @@ def _deserialize_key_event(data: Any) -> KeyEvent | None:
 
 
 def _deserialize_key_history(data: Any) -> KeyHistory:
+    """Rebuild a KeyHistory object from serialized nested state."""
+
     history = KeyHistory()
     if not isinstance(data, dict):
         return history
@@ -272,6 +300,8 @@ def _deserialize_key_history(data: Any) -> KeyHistory:
 
 
 def _deserialize_dr_party(data: dict, default_name: str) -> PartyState:
+    """Rebuild a Double Ratchet party state from serialized module data."""
+
     skipped = {}
     for entry in data.get("MKSKIPPED", []):
         if not isinstance(entry, dict):
@@ -298,6 +328,8 @@ def _deserialize_dr_party(data: dict, default_name: str) -> PartyState:
 
 
 def _serialize_message(msg: TripleRatchetMessageState) -> dict:
+    """Serialize a Triple Ratchet message for persistence."""
+
     header_dict = None
     if msg.header is not None:
         header_dict = {
@@ -320,6 +352,8 @@ def _serialize_message(msg: TripleRatchetMessageState) -> dict:
 
 
 def _deserialize_message(data: dict) -> TripleRatchetMessageState | None:
+    """Rebuild a Triple Ratchet message from serialized module data."""
+
     from components.data_classes import DRHeader, SpqrSckaMessage, SpqrHeader, TripleRatchetHeader
     header = None
     raw_header = data.get("header")
@@ -358,7 +392,16 @@ def _deserialize_message(data: dict) -> TripleRatchetMessageState | None:
 
 
 class TripleRatchetModule(MessagingBaseModule):
+    """Controller for the Triple Ratchet messaging demo.
+
+    The module keeps the embedded PQXDH bootstrap, Double Ratchet, and SPQR
+    state in sync with the messaging UI, supports persistence, and exposes the
+    send/receive actions used by the interactive workspace.
+    """
+
     def __init__(self) -> None:
+        """Create a fresh Triple Ratchet controller with empty session state."""
+
         self.session = TripleRatchetSessionState()
         self.pending_messages: list[dict[str, Any]] = []
         self._next_pending_id = 1
@@ -382,6 +425,8 @@ class TripleRatchetModule(MessagingBaseModule):
     # ------------------------------------------------------------------
 
     def _reset_session(self) -> None:
+        """Clear all runtime state and return to a pristine session."""
+
         self.session = TripleRatchetSessionState(alice=None, bob=None, message_log=[])
         self._session_ad = b""
         self._pqxdh_bootstrap_payload = None
@@ -399,6 +444,8 @@ class TripleRatchetModule(MessagingBaseModule):
         self._receive_steps.clear()
 
     def _apply_pqxdh_bootstrap_payload(self, payload: dict[str, Any]) -> bool:
+        """Apply PQXDH bootstrap data when the embedding application provides it."""
+
         if not isinstance(payload, dict):
             return False
 
@@ -430,7 +477,8 @@ class TripleRatchetModule(MessagingBaseModule):
         return True
 
     def _complete_bob_pqxdh_bootstrap(self) -> None:
-        """Initialize Bob's states when he receives his first message."""
+        """Initialize Bob's embedded ratchets when his first message arrives."""
+
         if self.session.bob is not None or self.session.alice is None:
             return
 
@@ -453,6 +501,8 @@ class TripleRatchetModule(MessagingBaseModule):
         initialize_key_history(self.session)
 
     def _sync_bootstrap_from_app_state(self, app_state: Any) -> None:
+        """Pull PQXDH bootstrap data from the hosting app or initialize locally."""
+
         if self.session.alice is not None:
             return
 
@@ -467,6 +517,8 @@ class TripleRatchetModule(MessagingBaseModule):
         self._reset_session_with_initializer()
 
     def _reset_session_with_initializer(self) -> None:
+        """Build a self-contained PQXDH bootstrap when no external data is present."""
+
         pqxdh_state = new_pqxdh_state()
         generate_alice_registration_material(pqxdh_state)
         upload_alice_initial_bundle(pqxdh_state)
@@ -509,6 +561,8 @@ class TripleRatchetModule(MessagingBaseModule):
     # ------------------------------------------------------------------
 
     def _get_party(self, name: str) -> TripleRatchetPartyState:
+        """Return the requested party state or raise if it has not been initialized."""
+
         key = name.lower()
         if key == "alice":
             if self.session.alice is None:
@@ -521,6 +575,8 @@ class TripleRatchetModule(MessagingBaseModule):
         raise ValueError(f"Unknown party: {name}")
 
     def _build_hint_message(self, sender: str) -> str:
+        """Return a simple UI hint for the next message from the selected sender."""
+
         key = sender.lower()
         if key == "alice":
             return f"Alice message #{self._next_pending_id} to Bob"
@@ -533,6 +589,8 @@ class TripleRatchetModule(MessagingBaseModule):
     # ------------------------------------------------------------------
 
     def send_message(self, sender: str, plaintext: str, fallback_plaintext: str = "") -> dict[str, Any]:
+        """Encrypt and queue a new Triple Ratchet message from the chosen sender."""
+
         sender_name = sender.capitalize()
         receiver_name = "Bob" if sender_name == "Alice" else "Alice"
 
@@ -591,6 +649,8 @@ class TripleRatchetModule(MessagingBaseModule):
         return pending
 
     def receive_message(self, recipient: str, pending_id: int) -> TripleRatchetMessageState | None:
+        """Decrypt a queued Triple Ratchet message for the chosen recipient."""
+
         target = recipient.capitalize()
         pending = next((item for item in self.pending_messages if item.get("id") == pending_id), None)
         if pending is None:
@@ -721,6 +781,8 @@ class TripleRatchetModule(MessagingBaseModule):
         return message
 
     def _auto_receive_all_pending(self) -> tuple[list[int], list[str]]:
+        """Process all pending messages when auto-receive is enabled."""
+
         processed: list[int] = []
         errors: list[str] = []
         for pending in list(self.pending_messages):
@@ -741,6 +803,8 @@ class TripleRatchetModule(MessagingBaseModule):
     # ------------------------------------------------------------------
 
     def export_state(self) -> dict:
+        """Export the current Triple Ratchet session for persistence."""
+
         alice = self.session.alice
         bob = self.session.bob
 
@@ -790,6 +854,8 @@ class TripleRatchetModule(MessagingBaseModule):
         }
 
     def import_state(self, data: dict) -> None:
+        """Restore a Triple Ratchet session from persisted module data."""
+
         if not isinstance(data, dict):
             return
 
@@ -879,6 +945,8 @@ class TripleRatchetModule(MessagingBaseModule):
     # ------------------------------------------------------------------
 
     def build(self, page: ft.Page, app_state: Any, perspective_selector: ft.Control | None = None) -> ft.Control:
+        """Build the interactive Triple Ratchet module view."""
+
         self._sync_bootstrap_from_app_state(app_state)
 
         message_count = ft.Text(f"Messages exchanged: {len(self.session.message_log)}")

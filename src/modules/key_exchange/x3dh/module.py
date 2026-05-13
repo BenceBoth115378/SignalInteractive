@@ -1,3 +1,12 @@
+"""Interactive controller for the X3DH protocol demonstration.
+
+This module wires the X3DH state machine into the generic key-exchange module
+base, exposes user-triggered actions for each protocol step, and coordinates
+the main view with the step-by-step visualization dialog shown after each
+action. It is the UI-facing entry point for the non-post-quantum key-exchange
+flow.
+"""
+
 from __future__ import annotations
 
 import flet as ft
@@ -28,12 +37,23 @@ from modules.key_exchange.x3dh.view import build_visual
 
 
 class X3DHModule(KeyExchangeBaseModule):
+    """Controller for the standard X3DH demo flow.
+
+    The class adapts protocol-specific state and action handlers to the shared
+    key-exchange module contract so the rest of the application can load,
+    export, render, and reset the X3DH scenario without special-casing it.
+    """
+
     _PROTOCOL_SOURCE_ID = "x3dh"
 
     def _new_state(self) -> X3DHState:
+        """Create a fresh X3DH demo state."""
+
         return new_state()
 
     def _deserialize_state(self, data: dict) -> X3DHState:
+        """Rebuild X3DH state from persisted module data."""
+
         return X3DHState(
             alice_local=data.get("alice_local"),
             alice_generated=bool(data.get("alice_generated", False)),
@@ -50,48 +70,78 @@ class X3DHModule(KeyExchangeBaseModule):
         )
 
     def _generate_alice_registration_material(self) -> None:
+        """Generate Alice's X3DH identity, signed prekey, and OPKs."""
+
         generate_alice_registration_material(self.state)
 
     def _upload_alice_initial_bundle(self) -> None:
+        """Upload Alice's initial prekey bundle to the simulated server."""
+
         upload_alice_initial_bundle(self.state)
 
     def _server_sends_alice_opk_to_requester(self) -> None:
+        """Consume and return one Alice OPK from the server."""
+
         server_sends_alice_opk_to_requester(self.state)
 
     def _server_sends_bob_opk_to_requester(self) -> None:
+        """Consume and return one Bob OPK from the server."""
+
         server_sends_bob_opk_to_requester(self.state)
 
     def _alice_uploads_new_opk(self) -> None:
+        """Generate and publish a fresh Alice OPK."""
+
         alice_uploads_new_opk(self.state)
 
     def _alice_rotates_signed_prekey_bundle(self) -> None:
+        """Rotate Alice's signed prekey bundle on the server."""
+
         alice_rotates_signed_prekey_bundle(self.state)
 
     def _request_bob_bundle_for_alice(self) -> None:
+        """Request Bob's bundle for Alice's X3DH handshake."""
+
         request_bob_bundle_for_alice(self.state)
 
     def _alice_verifies_bundle_signature(self) -> None:
+        """Verify Bob's signed prekey bundle before derivation."""
+
         alice_verifies_bundle_signature(self.state)
 
     def _alice_generates_ek_and_derives_sk(self) -> None:
+        """Generate Alice's ephemeral key and derive the shared secret."""
+
         alice_generates_ek_and_derives_sk(self.state)
 
     def _alice_calculates_associated_data(self) -> None:
+        """Derive the associated data used by the initial message."""
+
         alice_calculates_associated_data(self.state)
 
     def _alice_sends_initial_message(self, plaintext: str) -> None:
+        """Build and store Alice's initial X3DH message payload."""
+
         alice_sends_initial_message(self.state, plaintext)
 
     def _bob_receives_and_verifies(self) -> None:
+        """Let Bob consume the message and verify the derived secrets."""
+
         bob_receives_and_verifies(self.state)
 
     def _is_phase1_done(self) -> bool:
+        """Report whether the registration phase is complete."""
+
         return is_phase1_done(self.state)
 
     def _is_phase2_done(self) -> bool:
+        """Report whether Alice has finished the derivation phase."""
+
         return is_phase2_done(self.state)
 
     def build(self, page, app_state, perspective_selector: ft.Control | None = None):
+        """Build the interactive X3DH module view."""
+
         status_text = ft.Text("", size=13, color=ft.Colors.BLUE)
         show_step_visualization_checkbox = ft.Checkbox(label="Show step-by-step visualization", value=True)
         phase2_message_input = ft.TextField(label="Payload", value="", dense=True)

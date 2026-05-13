@@ -1,3 +1,11 @@
+"""Step-by-step visualization builders for the X3DH protocol.
+
+The helpers in this file build the explanatory dialogs shown after each X3DH
+action. They snapshot the before/after state, highlight what changed, and
+present the cryptographic operations in a diagram-like layout so the flow is
+easy to follow during demonstrations.
+"""
+
 from __future__ import annotations
 
 from typing import Any

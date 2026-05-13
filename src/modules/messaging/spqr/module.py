@@ -71,7 +71,22 @@ from modules.key_exchange.pqxdh.logic import (
     alice_generates_ek_and_derives_sk,
     alice_sends_initial_message,
 )
+"""SPQR messaging module integration.
+
+This module provides `SPQRModule`, a `MessagingBaseModule` implementation that
+hooks the SPQR ratchet logic into the application's UI, state export/import,
+and visualization helpers. It manages PQXDH bootstrapping, pending message
+queues, and instrumentation used by the SPQR visualizations.
+"""
+
 class SPQRModule(MessagingBaseModule):
+    """UI-facing module for demonstrating SPQR ratchet behavior.
+
+    The class maintains the active `SpqrSessionState`, pending messages and
+    visualization snapshots. Methods such as `send_message` and
+    `receive_message` perform ratchet operations and record traces used by the
+    step visualization components.
+    """
     def __init__(self) -> None:
         self.session = SpqrSessionState()
         self.pending_messages: list[dict[str, Any]] = []

@@ -1,3 +1,11 @@
+"""Interactive controller for the PQXDH protocol demonstration.
+
+This module connects the hybrid PQXDH state machine to the shared
+key-exchange module base, exposes the actions needed to drive the classical
+and post-quantum registration and bundle exchange flow, and keeps the main UI
+and the protocol step visualization in sync after each user action.
+"""
+
 from __future__ import annotations
 
 import flet as ft
@@ -30,12 +38,24 @@ from modules.key_exchange.pqxdh.view import build_visual
 
 
 class PQXDHModule(KeyExchangeBaseModule):
+    """Controller for the hybrid PQXDH demo flow.
+
+    The class adapts the PQXDH-specific state and action handlers to the shared
+    controller interface so the application can persist, restore, render, and
+    reset the protocol without separate code paths for the classical and
+    post-quantum variants.
+    """
+
     _PROTOCOL_SOURCE_ID = "pqxdh"
 
     def _new_state(self) -> PQXDHState:
+        """Create a fresh PQXDH demo state."""
+
         return new_state()
 
     def _deserialize_state(self, data: dict) -> PQXDHState:
+        """Rebuild PQXDH state from persisted module data."""
+
         return PQXDHState(
             alice_local=data.get("alice_local"),
             alice_generated=bool(data.get("alice_generated", False)),
@@ -52,54 +72,88 @@ class PQXDHModule(KeyExchangeBaseModule):
         )
 
     def _generate_alice_registration_material(self) -> None:
+        """Generate Alice's classical and post-quantum registration material."""
+
         generate_alice_registration_material(self.state)
 
     def _upload_alice_initial_bundle(self) -> None:
+        """Upload Alice's initial hybrid prekey bundle to the server."""
+
         upload_alice_initial_bundle(self.state)
 
     def _server_sends_alice_ec_opk_to_requester(self) -> None:
+        """Consume one Alice classical OPK from the server."""
+
         server_sends_alice_ec_opk_to_requester(self.state)
 
     def _server_sends_alice_pqopk_to_requester(self) -> None:
+        """Consume one Alice post-quantum OPK from the server."""
+
         server_sends_alice_pqopk_to_requester(self.state)
 
     def _server_sends_bob_ec_opk_to_requester(self) -> None:
+        """Consume one Bob classical OPK from the server."""
+
         server_sends_bob_ec_opk_to_requester(self.state)
 
     def _server_sends_bob_pqopk_to_requester(self) -> None:
+        """Consume one Bob post-quantum OPK from the server."""
+
         server_sends_bob_pqopk_to_requester(self.state)
 
     def _alice_uploads_new_opk(self) -> None:
+        """Generate and publish a fresh Alice classical and PQ OPK pair."""
+
         alice_uploads_new_opk(self.state)
 
     def _alice_rotates_signed_prekey_bundle(self) -> None:
+        """Rotate Alice's classical and PQ signed prekey bundle."""
+
         alice_rotates_signed_prekey_bundle(self.state)
 
     def _request_bob_bundle_for_alice(self) -> None:
+        """Request Bob's hybrid bundle for Alice's PQXDH handshake."""
+
         request_bob_bundle_for_alice(self.state)
 
     def _alice_verifies_bundle_signature(self) -> None:
+        """Verify Bob's classical and PQ bundle signatures."""
+
         alice_verifies_bundle_signature(self.state)
 
     def _alice_generates_ek_and_derives_sk(self) -> None:
+        """Generate Alice's ephemeral key and derive the hybrid shared secret."""
+
         alice_generates_ek_and_derives_sk(self.state)
 
     def _alice_calculates_associated_data(self) -> None:
+        """Derive the associated data used by the hybrid initial message."""
+
         alice_calculates_associated_data(self.state)
 
     def _alice_sends_initial_message(self, plaintext: str) -> None:
+        """Build and store Alice's initial PQXDH message payload."""
+
         alice_sends_initial_message(self.state, plaintext)
 
     def _bob_receives_and_verifies(self) -> None:
+        """Let Bob derive the hybrid secret and verify Alice's message state."""
+
         bob_receives_and_verifies(self.state)
 
     def _is_phase1_done(self) -> bool:
+        """Report whether the registration phase is complete."""
+
         return is_phase1_done(self.state)
 
     def _is_phase2_done(self) -> bool:
+        """Report whether Alice has finished the PQXDH derivation phase."""
+
         return is_phase2_done(self.state)
 
     def build(self, page, app_state, perspective_selector: ft.Control | None = None):
+        """Build the interactive PQXDH module view."""
+
         status_text = ft.Text("", size=13, color=ft.Colors.BLUE)
         show_step_visualization_checkbox = ft.Checkbox(label="Show step-by-step visualization", value=True)
         phase2_message_input = ft.TextField(label="Payload", value="", dense=True)

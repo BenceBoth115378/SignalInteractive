@@ -30,6 +30,14 @@ from modules.messaging.messaging_base_view import (
 
 from modules.tooltip_helpers import get_tooltip_messages
 
+"""Step-by-step visualization helpers for the SPQR module.
+
+This module builds the UI steps used by the SPQR step visualizer. Each
+function returns a list of step descriptors suitable for `show_step_dialog`.
+The helpers focus on creating readable, educational visuals of the SCKA
+handshake, KDF/ratcher operations and message chunking used by SPQR.
+"""
+
 
 
 def _tt(key: str) -> str:

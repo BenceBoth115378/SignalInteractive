@@ -1,4 +1,6 @@
-﻿from modules.messaging.double_ratchet.module import DoubleRatchetModule
+﻿"""Application router that owns module instances and module-card metadata."""
+
+from modules.messaging.double_ratchet.module import DoubleRatchetModule
 from modules.messaging.spqr.module import SPQRModule
 from modules.messaging.triple_ratchet.module import TripleRatchetModule
 from modules.key_exchange.pqxdh.module import PQXDHModule
@@ -7,7 +9,11 @@ from modules.key_exchange.x3dh.module import X3DHModule
 
 class Router:
 
+    """Manage the available simulator modules and their presentation cards."""
+
     def __init__(self):
+        """Instantiate all supported modules and their menu card metadata."""
+
         self.modules = {
             "double_ratchet": DoubleRatchetModule(),
             "spqr": SPQRModule(),
@@ -49,9 +55,13 @@ class Router:
         }
 
     def get_current_module(self, app_state):
+        """Return the currently selected module instance."""
+
         return self.modules[app_state.current_module]
 
     def get_module_cards(self) -> list[dict]:
+        """Return module cards in the configured display order."""
+
         return [
             self.module_cards[module_id]
             for module_id in self.modules.keys()

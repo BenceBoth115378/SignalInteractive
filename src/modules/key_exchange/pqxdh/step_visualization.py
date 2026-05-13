@@ -1,3 +1,11 @@
+"""Step-by-step visualization builders for the PQXDH protocol.
+
+The helpers in this file explain the hybrid exchange after each action by
+capturing the before/after state and rendering the classical DH and PQKEM
+parts side by side. The resulting dialogs make it clear how the post-quantum
+prekeys affect bundle selection, shared-secret derivation, and message checks.
+"""
+
 from __future__ import annotations
 
 from typing import Any

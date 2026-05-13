@@ -1,3 +1,10 @@
+"""Triple Ratchet core logic built on top of PQXDH, Double Ratchet, and SPQR.
+
+This module derives the Triple Ratchet key schedule from the PQXDH shared
+secret, combines the Double Ratchet and SPQR per-message keys, and provides
+the send/receive primitives used by the interactive messaging demo.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -30,15 +37,20 @@ _PROTOCOL_INFO = b"TripleRatchet:HMAC-SHA256"
 
 
 def _hkdf_extract(salt: bytes, ikm: bytes) -> bytes:
+    """Return the HMAC-based HKDF extract step for the given salt and input keying material."""
+
     return _hmac.new(salt, ikm, hashlib.sha256).digest()
 
 
 def _hkdf_expand(prk: bytes, info: bytes) -> bytes:
+    """Return the HMAC-based HKDF expand step for the given pseudorandom key and info string."""
+
     return _hmac.new(prk, info + b"\x01", hashlib.sha256).digest()
 
 
 def KDF_TR_SPLIT(sk: bytes) -> tuple[bytes, bytes]:
-    """Derive separate 32-byte seeds for DR and SPQR from the PQXDH shared secret."""
+    """Split the PQXDH shared secret into independent DR and SPQR seeds."""
+
     prk = _hkdf_extract(b"\x00" * 32, sk)
     sk_dr = _hkdf_expand(prk, _PROTOCOL_INFO + b":DR")
     sk_spqr = _hkdf_expand(prk, _PROTOCOL_INFO + b":SPQR")
@@ -46,7 +58,8 @@ def KDF_TR_SPLIT(sk: bytes) -> tuple[bytes, bytes]:
 
 
 def KDF_HYBRID(ec_mk: bytes, pq_mk: bytes) -> bytes:
-    """Combine the DR and SPQR per-message keys into a single encryption key."""
+    """Combine the DR and SPQR per-message keys into the Triple Ratchet message key."""
+
     prk = _hkdf_extract(b"\x00" * 32, ec_mk + pq_mk)
     return _hkdf_expand(prk, _PROTOCOL_INFO + b":MK")
 
@@ -55,14 +68,13 @@ def initialize_session_from_pqxdh(
     sk: bytes,
     bob_spk_pair: DHKeyPair,
 ) -> TripleRatchetSessionState:
-    """Bootstrap a Triple Ratchet session from PQXDH output.
+    """Bootstrap Alice's Triple Ratchet state from the PQXDH shared secret.
 
-    The 32-byte PQXDH shared secret is split into two independent seeds:
-    one to seed the classical DR ratchet and one to seed the SPQR ratchet.
-    
-    Alice is initialized immediately, but Bob is initialized only after
-    receiving Alice's first message (deferred bootstrap pattern).
+    The PQXDH output is split into independent seeds for the classical Double
+    Ratchet and the SPQR ratchet. Alice is initialized immediately, while Bob
+    is deferred until the first inbound message is available.
     """
+
     sk_dr, sk_spqr = KDF_TR_SPLIT(sk)
 
     alice_dr = PartyState("Alice")
@@ -83,10 +95,8 @@ def RatchetInitBobTripleRatchet(
     sk_dr: bytes,
     bob_spk_pair: DHKeyPair,
 ) -> None:
-    """Initialize Bob's DR state.
+    """Initialize Bob's embedded Double Ratchet state from the split seed."""
 
-    Called when Bob receives his first message from Alice.
-    """
     RatchetInitBob(dr_state, sk_dr, bob_spk_pair)
 
 
@@ -96,10 +106,12 @@ def TripleRatchetEncrypt(
     plaintext: bytes,
     AD: bytes,
 ) -> tuple[TripleRatchetHeader, bytes, bytes, bytes, bytes, dict[str, Any], dict[str, Any]]:
-    """Encrypt one message using both DR and SPQR in parallel.
+    """Encrypt one message by running the Double Ratchet and SPQR in parallel.
 
-    Returns (header, ciphertext, ec_mk, pq_mk, mk, dr_trace, spqr_trace).
+    Returns the combined header, ciphertext, the two per-message keys, the
+    hybrid message key, and trace dictionaries for both ratchets.
     """
+
     # DR ratchet step
     dr_ns, ec_mk = RatchetSendKey(dr_state)
     dr_header = ext.HEADER(dr_state.DHs, dr_state.PN, dr_ns)
@@ -132,10 +144,12 @@ def TripleRatchetDecrypt(
     ciphertext: bytes,
     AD: bytes,
 ) -> tuple[bytes, bytes, bytes, bytes, dict[str, Any], dict[str, Any]]:
-    """Decrypt one message using both DR and SPQR in parallel.
+    """Decrypt one message by combining the Double Ratchet and SPQR keys.
 
-    Returns (plaintext, ec_mk, pq_mk, mk, dr_trace, spqr_trace).
+    Returns the plaintext, the two per-message keys, the hybrid message key,
+    and trace dictionaries for both ratchets.
     """
+
     dr_trace: dict[str, Any] = {}
     ec_mk = RatchetReceiveKey(dr_state, triple_header.dr, dr_trace)
     dr_trace["rk"] = dr_state.RK

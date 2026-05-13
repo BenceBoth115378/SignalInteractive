@@ -26,6 +26,14 @@ from modules.messaging.messaging_base_steps import (
 
 from modules.tooltip_helpers import get_tooltip_messages
 
+"""Step visualization helpers for Double Ratchet.
+
+This module builds the UI steps displayed when visualizing sending and
+receiving operations for the Double Ratchet demo. The returned step lists are
+consumed by `show_step_dialog` to present an educational, stepwise view of
+chain/key derivation, DH ratchets, and X3DH bootstrap integration.
+"""
+
 
 def _tt(key: str) -> str:
     message = get_tooltip_messages("double_ratchet").get(key, "")

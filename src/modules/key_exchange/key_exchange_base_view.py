@@ -1,3 +1,11 @@
+"""Shared view helpers for the key-exchange protocol family.
+
+This module provides the layout primitives that render the registration phase,
+the shared-secret phase, and the initial message phase in a consistent way
+across X3DH and PQXDH. Protocol-specific views plug their own state summaries
+and tooltip data into these building blocks.
+"""
+
 from __future__ import annotations
 
 from typing import Any

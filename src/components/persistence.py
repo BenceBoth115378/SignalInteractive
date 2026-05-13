@@ -1,3 +1,5 @@
+"""Persistence helpers for saving and loading module state snapshots."""
+
 from __future__ import annotations
 
 import asyncio
@@ -19,6 +21,8 @@ WEB_UPLOAD_DIR = BASE_DIR.parent / "build" / "module_state_uploads"
 
 
 def build_module_snapshot(app_state: AppState, router) -> dict[str, Any] | None:
+    """Build a serializable snapshot for the currently active module."""
+
     module_id = app_state.current_module
     if not module_id:
         return None
@@ -41,6 +45,8 @@ def build_module_snapshot(app_state: AppState, router) -> dict[str, Any] | None:
 
 
 def parse_module_snapshot(payload: Any) -> tuple[str, dict[str, Any], str]:
+    """Validate and unpack a saved module snapshot payload."""
+
     if not isinstance(payload, dict):
         raise ValueError("Selected file is not a valid module snapshot.")
 
@@ -62,6 +68,8 @@ def parse_module_snapshot(payload: Any) -> tuple[str, dict[str, Any], str]:
 
 
 class ModuleStatePersistence:
+    """Handle save/load interactions for module-scoped simulator state."""
+
     def __init__(
         self,
         page: ft.Page,
@@ -70,6 +78,8 @@ class ModuleStatePersistence:
         refresh_callback: Callable[[], None],
         set_status: Callable[[str, bool], None],
     ):
+        """Create a persistence controller bound to the current app context."""
+
         self.page = page
         self.app_state = app_state
         self.router = router
@@ -81,9 +91,13 @@ class ModuleStatePersistence:
         self.file_picker.on_upload = self._noop_upload_handler
 
     def _noop_upload_handler(self, e):
+        """Placeholder upload handler used until a real upload is attached."""
+
         pass
 
     def build_controls(self) -> ft.Row:
+        """Build the save/load buttons shown in the app toolbar."""
+
         save_disabled = not bool(self.app_state.current_module)
         return ft.Row(
             controls=[
@@ -94,12 +108,18 @@ class ModuleStatePersistence:
         )
 
     def _on_save_clicked(self, e) -> None:
+        """Kick off an asynchronous save operation from the UI."""
+
         self.page.run_task(self.save_current_module_state)
 
     def _on_load_clicked(self, e) -> None:
+        """Kick off an asynchronous load operation from the UI."""
+
         self.page.run_task(self.load_module_state)
 
     async def _desktop_state_root(self) -> Path:
+        """Return the base directory used for desktop state files."""
+
         try:
             documents_dir = await ft.StoragePaths(self.page).get_application_documents_directory()
         except Exception:
@@ -107,9 +127,13 @@ class ModuleStatePersistence:
         return Path(documents_dir)
 
     def _module_file_name(self, module_id: str) -> str:
+        """Return the default file name for a module snapshot."""
+
         return f"{module_id}.json"
 
     async def save_current_module_state(self) -> None:
+        """Save the active module state either to disk or as a web download."""
+
         snapshot = build_module_snapshot(self.app_state, self.router)
         if snapshot is None:
             self.set_status("Open a module before saving its state.", is_error=True)
@@ -154,6 +178,8 @@ class ModuleStatePersistence:
         self.page.update()
 
     async def _resolve_loaded_file_path(self, selected_file: ft.FilePickerFile) -> Path:
+        """Resolve the path of a loaded file, uploading it first on web if needed."""
+
         if selected_file.path:
             return Path(selected_file.path)
 
@@ -166,6 +192,8 @@ class ModuleStatePersistence:
         return await self._do_web_file_upload(selected_file)
 
     async def _do_web_file_upload(self, selected_file: ft.FilePickerFile) -> Path:
+        """Upload a selected web file to the server-side scratch directory."""
+
         relative_upload_path = Path("loads") / f"{uuid4().hex}_{Path(selected_file.name).name}"
         upload_url = self.page.get_upload_url(relative_upload_path.as_posix(), 60)
 
@@ -221,6 +249,8 @@ class ModuleStatePersistence:
         return target_path
 
     async def _open_load_dialog(self) -> list[ft.FilePickerFile]:
+        """Open the file picker used to select a saved module snapshot."""
+
         initial_directory = None
         if not self.page.web:
             state_root = await self._desktop_state_root()
@@ -236,6 +266,8 @@ class ModuleStatePersistence:
         )
 
     async def load_module_state(self) -> None:
+        """Load a saved module snapshot and optionally switch to that module."""
+
         loaded_path: Path | None = None
         try:
             picked_files = await self._open_load_dialog()
@@ -294,6 +326,8 @@ class ModuleStatePersistence:
         self._show_switch_module_dialog(module_id, saved_perspective)
 
     def _show_switch_module_dialog(self, module_id: str, saved_perspective: str) -> None:
+        """Ask whether the UI should switch to the module that was just loaded."""
+
         def _close(switch_to_loaded: bool) -> None:
             dialog.open = False
             if switch_to_loaded:

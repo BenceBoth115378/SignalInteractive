@@ -1,3 +1,10 @@
+"""Shared messaging module base and nested-state serialization helpers.
+
+This file provides the base controller class used by the messaging protocols
+and the generic nested encode/decode functions that preserve dataclasses,
+enums, and byte payloads during persistence.
+"""
+
 from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
@@ -12,13 +19,8 @@ class MessagingBaseModule(BaseModule):
 
 
 def encode_nested(value: Any) -> Any:
-    """Recursively encode bytes and dataclass objects for JSON serialization.
-    
-    Converts:
-    - bytes → {"__bytes__": hex_string}
-    - Enum → {"__enum__": class_name, "value": value}
-    - dataclass → {"__class__": class_name, "fields": {...}}
-    """
+    """Recursively encode dataclasses, enums, and bytes for JSON storage."""
+
     if isinstance(value, bytes):
         return {"__bytes__": value.hex()}
     if isinstance(value, Enum):
@@ -36,13 +38,8 @@ def encode_nested(value: Any) -> Any:
 
 
 def decode_nested(value: Any, class_map: dict[str, type]) -> Any:
-    """Recursively decode JSON-serialized bytes and dataclass objects.
-    
-    Decodes:
-    - {"__bytes__": hex_string} → bytes
-    - {"__enum__": class_name, "value": value} → Enum instance
-    - {"__class__": class_name, "fields": {...}} → dataclass instance
-    """
+    """Recursively decode JSON storage back into bytes, enums, and dataclasses."""
+
     if isinstance(value, dict):
         if "__bytes__" in value and isinstance(value["__bytes__"], str):
             try:

@@ -1,3 +1,11 @@
+"""View composition for the X3DH demonstration.
+
+This module turns the current X3DH state into the two-column protocol layout
+shown in the application: phase controls on the left, state summaries and event
+history on the right. The view is intentionally verbose so each protocol phase
+can be inspected without opening the step visualization dialog.
+"""
+
 from __future__ import annotations
 
 from typing import Any

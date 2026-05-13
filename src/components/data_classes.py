@@ -1,3 +1,10 @@
+"""Shared dataclasses and enums used across the simulator components.
+
+The types in this module define the application state, protocol state, message
+state, and visualization snapshots that are exchanged between the UI, the
+protocol logic, and the persistence layer.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -9,6 +16,8 @@ Perspective = Literal["global", "alice", "bob", "attacker"]
 
 @dataclass
 class AppState:
+    """Top-level application state shared across modules and persistence."""
+
     current_module: str = ""
     perspective: Perspective = "global"
     x3dh_to_dr_bootstrap: dict | None = None
@@ -17,6 +26,8 @@ class AppState:
 
 @dataclass
 class X3DHState:
+    """Mutable state for the X3DH protocol demonstration."""
+
     alice_local: dict | None = None
     alice_generated: bool = False
     server_state: dict = field(default_factory=dict)
@@ -33,6 +44,8 @@ class X3DHState:
 
 @dataclass
 class PQXDHState:
+    """Mutable state for the PQXDH protocol demonstration."""
+
     alice_local: dict | None = None
     alice_generated: bool = False
     server_state: dict = field(default_factory=dict)
@@ -49,6 +62,8 @@ class PQXDHState:
 
 @dataclass
 class DoubleRatchetState:
+    """Container for the double-ratchet sender, receiver, and message log."""
+
     initializer: PartyState = field(default_factory=lambda: PartyState("Alice"))
     responder: PartyState = field(default_factory=lambda: PartyState("Bob"))
     message_log: list[MessageState] = field(default_factory=list)
@@ -56,12 +71,16 @@ class DoubleRatchetState:
 
 @dataclass
 class DHKeyPair:
+    """Simple Diffie-Hellman key pair with hex-encoded private and public values."""
+
     private: str
     public: str
 
 
 @dataclass
 class KeyEvent:
+    """A single key-creation or key-use event recorded in key history."""
+
     key_type: str
     key_number: int
     key_value: bytes | str
@@ -79,7 +98,7 @@ class KeyEvent:
 
 @dataclass
 class KeyHistory:
-    """Maintains counts and events for each key type."""
+    """Track key-generation and key-use events for a ratchet participant."""
     rk_events: list[KeyEvent] = field(default_factory=list)
     cks_events: list[KeyEvent] = field(default_factory=list)
     ckr_events: list[KeyEvent] = field(default_factory=list)
@@ -127,6 +146,8 @@ class KeyHistory:
 
 
 class LimitedSkippedKeys(dict[tuple[str, int], bytes]):
+    """Dictionary with a hard limit for skipped message keys."""
+
     def __init__(self, *args, max_items: int = 2000, **kwargs):
         self.max_items = max_items
         super().__init__()
@@ -151,6 +172,8 @@ class LimitedSkippedKeys(dict[tuple[str, int], bytes]):
 
 @dataclass
 class DRHeader:
+    """Double Ratchet message header fields."""
+
     dh: str
     pn: int
     n: int
@@ -162,6 +185,8 @@ class DRHeader:
 
 @dataclass
 class PartyState:
+    """Runtime state for one Double Ratchet participant."""
+
     name: str
     DHs: DHKeyPair | None = None
     DHr: str = ""
@@ -187,6 +212,8 @@ class PartyState:
 
 @dataclass
 class MessageState:
+    """Stored record of a Double Ratchet message exchange."""
+
     sender: str
     receiver: str
     message_key: bytes
@@ -201,6 +228,8 @@ class MessageState:
 
 @dataclass
 class PartyStateSnapshot:
+    """Snapshot of the Double Ratchet fields shown in visualizations."""
+
     DHs_public: str = ""
     DHs_private: str = ""
     DHr: str | None = ""
@@ -214,6 +243,8 @@ class PartyStateSnapshot:
 
 @dataclass
 class SendStepVisualizationSnapshot:
+    """Captured state for a Double Ratchet send-step visualization."""
+
     sender: str
     receiver: str
     plaintext: bytes
@@ -230,6 +261,8 @@ class SendStepVisualizationSnapshot:
 
 @dataclass
 class ReceiveStepVisualizationSnapshot:
+    """Captured state for a Double Ratchet receive-step visualization."""
+
     sender: str
     receiver: str
     pending_id: int
@@ -254,12 +287,16 @@ class ReceiveStepVisualizationSnapshot:
 
 
 def _spqr_encode_bytes(value: bytes | None) -> str | None:
+    """Encode SPQR byte values as hex strings for serialization."""
+
     if value is None:
         return None
     return value.hex()
 
 
 def _spqr_decode_bytes(value: str | None) -> bytes | None:
+    """Decode SPQR hex strings back into bytes when possible."""
+
     if value is None:
         return None
     try:
@@ -269,6 +306,8 @@ def _spqr_decode_bytes(value: str | None) -> bytes | None:
 
 
 class SpqrMessageType(str, Enum):
+    """Message types used by the SPQR ratchet visualizer."""
+
     NONE = "None"
     HDR = "Hdr"
     EK = "Ek"
@@ -280,6 +319,8 @@ class SpqrMessageType(str, Enum):
 
 @dataclass
 class SpqrSckaMessage:
+    """SPQR send-step message envelope."""
+
     epoch: int
     msg_type: SpqrMessageType
     data: bytes = b""
@@ -303,6 +344,8 @@ class SpqrSckaMessage:
 
 @dataclass
 class SckaOutputKey:
+    """SPQR output key paired with the state that generated it."""
+
     epoch: int
     key: bytes
 
@@ -329,6 +372,8 @@ class SckaOutputKey:
 
 @dataclass
 class AuthenticatorState:
+    """SPQR authenticator state used in the braid protocol model."""
+
     root_key: bytes = b"\x00" * 32
     mac_key: bytes | None = None
 
@@ -347,6 +392,8 @@ class AuthenticatorState:
 
 @dataclass
 class EncoderState:
+    """SPQR encoder state for the braid protocol model."""
+
     message: bytes
     chunk_size: int = 256
     next_index: int = 0
@@ -380,6 +427,8 @@ class EncoderState:
 
 @dataclass
 class DecoderState:
+    """SPQR decoder state for the braid protocol model."""
+
     message_size: int
     chunks: dict[int, bytes] = field(default_factory=dict)
     total_chunks: int | None = None
@@ -442,12 +491,16 @@ class DecoderState:
 
 @dataclass
 class BraidProtocolState:
+    """Container for the SPQR braid protocol sub-states."""
+
     node: Any
     node_history: dict[int, Any] = field(default_factory=dict)
 
 
 @dataclass
 class KdfChainState:
+    """Single send or receive chain within one SPQR epoch."""
+
     CK: bytes
     N: int = 0
 
@@ -466,6 +519,8 @@ class KdfChainState:
 
 @dataclass
 class EpochKdfChains:
+    """SPQR epoch chains for send and receive directions."""
+
     send: KdfChainState | None
     receive: KdfChainState | None
 
@@ -478,6 +533,8 @@ class EpochKdfChains:
 
 @dataclass
 class SpqrHeader:
+    """SPQR message header with encoded message and index."""
+
     msg: SpqrSckaMessage
     n: int
 
@@ -487,6 +544,8 @@ Direction = Literal["A2B", "B2A"]
 
 @dataclass
 class SpqrRatchetState:
+    """Runtime state for the SPQR ratchet."""
+
     RK: bytes
     epoch: int
     kdfchains: dict[int, EpochKdfChains]
@@ -498,6 +557,8 @@ class SpqrRatchetState:
 
 @dataclass
 class SckaSendResult:
+    """Result returned when SPQR produces a send-step output key."""
+
     msg: SpqrSckaMessage
     sending_epoch: int
     output_key: SckaOutputKey | None
@@ -506,12 +567,16 @@ class SckaSendResult:
 
 @dataclass
 class SckaReceiveResult:
+    """Result returned when SPQR processes a received message."""
+
     receiving_epoch: int
     output_key: SckaOutputKey | None
 
 
 @dataclass
 class SpqrMessageState:
+    """Stored SPQR message payload for the messaging timeline."""
+
     sender: str
     receiver: str
     header: SpqrHeader | None = None
@@ -524,6 +589,8 @@ class SpqrMessageState:
 
 @dataclass
 class SpqrSessionState:
+    """Top-level SPQR session container used by the messaging module."""
+
     alice: SpqrRatchetState | None = None
     bob: SpqrRatchetState | None = None
     message_log: list[SpqrMessageState] = field(default_factory=list)
@@ -535,12 +602,16 @@ class SpqrSessionState:
 
 @dataclass
 class TripleRatchetHeader:
+    """Combined Double Ratchet and SPQR header used by Triple Ratchet messages."""
+
     dr: DRHeader
     spqr: SpqrHeader
 
 
 @dataclass
 class TripleRatchetPartyState:
+    """Triple Ratchet party state combining DR and SPQR sub-states."""
+
     name: str
     dr: PartyState
     spqr: SpqrRatchetState | None = None
@@ -548,6 +619,8 @@ class TripleRatchetPartyState:
 
 @dataclass
 class TripleRatchetSessionState:
+    """Top-level Triple Ratchet session container."""
+
     alice: TripleRatchetPartyState | None = None
     bob: TripleRatchetPartyState | None = None
     message_log: list["TripleRatchetMessageState"] = field(default_factory=list)
@@ -555,6 +628,8 @@ class TripleRatchetSessionState:
 
 @dataclass
 class TripleRatchetMessageState:
+    """Stored Triple Ratchet message and derived key material."""
+
     sender: str
     receiver: str
     header: TripleRatchetHeader | None = None
@@ -570,6 +645,8 @@ class TripleRatchetMessageState:
 
 @dataclass
 class TripleRatchetPartyStateSnapshot:
+    """Snapshot of a Triple Ratchet party for send/receive visualizations."""
+
     dr_dhs_public: str = ""
     dr_dhs_private: str = ""
     dr_dhr: str = ""
@@ -591,6 +668,8 @@ class TripleRatchetPartyStateSnapshot:
 
 @dataclass
 class TripleRatchetSendSnapshot:
+    """Recorded state for a Triple Ratchet send-step visualization."""
+
     sender: str
     receiver: str
     plaintext: bytes
@@ -610,6 +689,8 @@ class TripleRatchetSendSnapshot:
 
 @dataclass
 class TripleRatchetReceiveSnapshot:
+    """Recorded state for a Triple Ratchet receive-step visualization."""
+
     sender: str
     receiver: str
     pending_id: int

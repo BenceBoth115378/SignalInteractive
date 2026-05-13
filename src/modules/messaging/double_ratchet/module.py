@@ -53,16 +53,33 @@ from modules.messaging.double_ratchet.attacker_dashboard.view import build_attac
 from modules.messaging.double_ratchet.view import build_visual
 from components.data_classes import PartyState
 
+"""Double Ratchet UI module and state management.
+
+This module contains the `DoubleRatchetModule` class which integrates the
+double-ratchet cryptographic logic with the application's UI, serialization
+helpers and visualization hooks. It is responsible for maintaining the
+`DoubleRatchetState`, serializing/deserializing it for persistence, and
+providing send/receive instrumentation used by the demo views.
+"""
+
 
 def _encode_bytes_for_message(value: Any) -> Any:
-    """Encode bytes values in message objects (used with encode_nested)."""
+    """Encode bytes values in message objects (used with encode_nested).
+
+    Returns a small dict marker so bytes can be serialized to JSON-friendly
+    structures for storage and UI transport.
+    """
     if isinstance(value, bytes):
         return {"__bytes__": value.hex()}
     return value
 
 
 def _decode_bytes_from_message(value: Any) -> Any:
-    """Decode bytes values in message objects (used with decode_nested)."""
+    """Decode byte markers produced by `_encode_bytes_for_message`.
+
+    If the input matches the marker pattern the original bytes are returned,
+    otherwise the input is returned unchanged.
+    """
     if isinstance(value, dict) and len(value) == 1 and isinstance(value.get("__bytes__"), str):
         try:
             return bytes.fromhex(value["__bytes__"])
@@ -222,6 +239,14 @@ def _deserialize_message(data: dict) -> MessageState:
 
 
 class DoubleRatchetModule(MessagingBaseModule):
+    """Messaging module that exposes Double Ratchet behaviour to the UI.
+
+    The class maintains the active `DoubleRatchetState`, pending message
+    queue, visualization snapshots and X3DH bootstrap artifacts used to
+    demonstrate the ratchet protocol in the app. Methods on the module are
+    intended to be called by UI controls and testing harnesses.
+    """
+
     def __init__(self):
         self.session = DoubleRatchetState()
         self.pending_messages: list[dict[str, Any]] = []

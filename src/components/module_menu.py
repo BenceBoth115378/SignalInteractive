@@ -1,9 +1,13 @@
+"""Module-selection menu used by the main application shell."""
+
 import flet as ft
 
 DESIRED_ORDER = ["x3dh", "pqxdh", "double_ratchet", "spqr", "triple_ratchet"]
 
 
 def module_sort_key(module):
+    """Sort modules into the preferred display order."""
+
     try:
         return DESIRED_ORDER.index(module["id"])
     except ValueError:
@@ -11,6 +15,8 @@ def module_sort_key(module):
 
 
 def build_module_menu(module_cards: list[dict], on_select: callable) -> ft.Control:
+
+    """Build the module selection menu from the configured module cards."""
 
     sorted_modules = sorted(module_cards, key=module_sort_key)
 

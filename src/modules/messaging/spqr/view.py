@@ -12,6 +12,13 @@ from modules.messaging.messaging_base_view import (
 )
 from modules.tooltip_helpers import get_tooltip_messages
 
+"""SPQR UI view builders.
+
+Provides `build_visual` and timeline builders used by the SPQR messaging UI.
+These helpers compose party panels, key-history views and timeline entries
+so the application can render the SPQR demo screens.
+"""
+
 
 
 def _active_chain_values(state: SpqrRatchetState | None) -> tuple[str, str]:

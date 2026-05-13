@@ -5,6 +5,14 @@ from modules.messaging.messaging_base_view import is_party_visible, build_key_fi
 from modules.base_view import format_key, last_n_chars, make_copy_handler
 from modules.tooltip_helpers import build_tooltip_text, get_tooltip_messages
 
+"""Double Ratchet UI view builders.
+
+Contains `build_visual` and timeline helpers that render party panels,
+key-history panels and timeline entries for the Double Ratchet demo. These
+functions are focused on composing visual controls; the cryptographic logic
+is implemented separately in the `logic.py` file.
+"""
+
 
 def _build_party_panel(
     page: ft.Page,

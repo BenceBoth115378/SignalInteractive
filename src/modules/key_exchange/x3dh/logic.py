@@ -1,3 +1,12 @@
+"""Protocol logic for the X3DH demonstration.
+
+The functions in this module build the canonical X3DH scenario used by the UI:
+Alice and Bob are bootstrapped with identity keys, signed prekeys, and one-time
+prekeys; Alice requests Bob's bundle, verifies the signature, derives the
+shared secret, computes associated data, sends the initial message, and Bob
+finally verifies the result.
+"""
+
 from __future__ import annotations
 
 from components.data_classes import X3DHState
@@ -11,6 +20,8 @@ from modules.key_exchange.key_exchange_base_logic import (
 
 
 def _ensure_server_state(state: X3DHState) -> dict:
+    """Return the server state dictionary, creating default buckets as needed."""
+
     if not isinstance(state.server_state, dict):
         state.server_state = {}
 
@@ -30,6 +41,8 @@ def _ensure_server_state(state: X3DHState) -> dict:
 
 
 def bootstrap_bob_to_server(state: X3DHState) -> None:
+    """Seed the simulated server with Bob's identity and prekey material."""
+
     server_state = _ensure_server_state(state)
 
     bob_identity = _generate_dh_key_pair()
@@ -64,6 +77,8 @@ def bootstrap_bob_to_server(state: X3DHState) -> None:
 
 
 def new_state() -> X3DHState:
+    """Create a fresh X3DH demo state with Bob preloaded on the server."""
+
     state = X3DHState(
         server_state={
             "alice_bundle": None,
@@ -82,6 +97,8 @@ def new_state() -> X3DHState:
 
 
 def generate_alice_registration_material(state: X3DHState) -> None:
+    """Generate Alice's registration keys and reset the downstream phase state."""
+
     identity = _generate_dh_key_pair()
     signed_prekey = _generate_dh_key_pair()
     signature = ext.SIGN_WITH_IDENTITY_DH_PRIVATE(identity["private"], bytes.fromhex(signed_prekey["public"]))
@@ -114,6 +131,8 @@ def generate_alice_registration_material(state: X3DHState) -> None:
 
 
 def upload_alice_initial_bundle(state: X3DHState) -> None:
+    """Publish Alice's initial bundle and OPKs to the server state."""
+
     alice = ensure_alice_local(state)
     server_state = _ensure_server_state(state)
     server_state["alice_bundle"] = {
@@ -129,6 +148,8 @@ def upload_alice_initial_bundle(state: X3DHState) -> None:
 
 
 def server_sends_alice_opk_to_requester(state: X3DHState) -> None:
+    """Consume one Alice OPK from the server and mark replenishment if needed."""
+
     server_state = _ensure_server_state(state)
     available = server_state.get("alice_available_opk_ids", [])
     if not available:
@@ -145,6 +166,8 @@ def server_sends_alice_opk_to_requester(state: X3DHState) -> None:
 
 
 def server_sends_bob_opk_to_requester(state: X3DHState) -> None:
+    """Consume one Bob OPK from the server."""
+
     server_state = _ensure_server_state(state)
     available = server_state.get("bob_available_opk_ids", [])
     if not available:
@@ -157,6 +180,8 @@ def server_sends_bob_opk_to_requester(state: X3DHState) -> None:
 
 
 def alice_uploads_new_opk(state: X3DHState) -> None:
+    """Generate and publish a fresh Alice OPK to the simulated server."""
+
     alice = ensure_alice_local(state)
     server_state = _ensure_server_state(state)
 
@@ -177,6 +202,8 @@ def alice_uploads_new_opk(state: X3DHState) -> None:
 
 
 def alice_rotates_signed_prekey_bundle(state: X3DHState) -> None:
+    """Rotate Alice's signed prekey bundle and update the server copy."""
+
     alice = ensure_alice_local(state)
     server_state = _ensure_server_state(state)
 
@@ -197,6 +224,8 @@ def alice_rotates_signed_prekey_bundle(state: X3DHState) -> None:
 
 
 def request_bob_bundle_for_alice(state: X3DHState) -> None:
+    """Fetch Bob's bundle for Alice and optionally attach one Bob OPK."""
+
     server = _ensure_server_state(state)
     bob_bundle = server.get("bob_bundle")
     if not isinstance(bob_bundle, dict):
@@ -228,6 +257,8 @@ def request_bob_bundle_for_alice(state: X3DHState) -> None:
 
 
 def alice_verifies_bundle_signature(state: X3DHState) -> None:
+    """Verify Bob's signed prekey bundle before Alice derives the secret."""
+
     bundle = state.last_bundle_for_alice
     if not isinstance(bundle, dict):
         raise ValueError("Alice must request Bob prekey bundle first.")
@@ -254,6 +285,8 @@ def alice_verifies_bundle_signature(state: X3DHState) -> None:
 
 
 def alice_generates_ek_and_derives_sk(state: X3DHState) -> None:
+    """Generate Alice's ephemeral key and derive the X3DH shared secret."""
+
     if not state.phase2_signature_verified:
         raise ValueError("Verify bundle signature before deriving SK.")
 
@@ -289,6 +322,8 @@ def alice_generates_ek_and_derives_sk(state: X3DHState) -> None:
 
 
 def alice_sends_initial_message(state: X3DHState, plaintext: str) -> None:
+    """Build the initial X3DH message and store the ciphertext payload."""
+
     alice = ensure_alice_local(state)
     derived = state.alice_derived
     bundle = state.last_bundle_for_alice
@@ -335,6 +370,8 @@ def alice_sends_initial_message(state: X3DHState, plaintext: str) -> None:
 
 
 def bob_receives_and_verifies(state: X3DHState) -> None:
+    """Let Bob derive the shared secret and verify Alice's transmitted state."""
+
     bob = ensure_bob_local(state)
     msg = state.initial_message
     if not isinstance(msg, dict):

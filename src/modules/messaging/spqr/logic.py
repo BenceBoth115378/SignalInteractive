@@ -25,6 +25,15 @@ from components.data_classes import (
     SpqrSessionState,
 )
 
+"""SPQR ratchet and SCKA primitives.
+
+This module contains an educational implementation of the SPQR ratchet used
+in the demo app. It exposes HKDF-style KDF helpers, the SCKA state machine
+nodes for an incremental KEM handshake, and higher-level ratchet helpers used
+by the UI module. The implementation is intentionally explicit for
+visualization and teaching purposes.
+"""
+
 
 PROTOCOL_INFO = b"SPQR_MLKEM1024_HMAC-SHA256"
 MAC_SIZE = 32
@@ -80,6 +89,11 @@ def _concat_bytes(*parts: bytes) -> bytes:
 
 
 def KDF_AUTH(root_key: bytes, update_key: bytes, epoch: int) -> tuple[bytes, bytes]:
+    """Derive the authenticator root and MAC key for a given epoch.
+
+    Returns a tuple `(root_key, mac_key)` derived from the previous root and
+    the provided `update_key` for the specified `epoch`.
+    """
     info = _concat_bytes(PROTOCOL_INFO, b":Authenticator Update", _to_bytes_epoch(epoch))
     prk = _hkdf_extract(root_key, update_key)
     output = _hkdf_expand(prk, info, 64)
@@ -87,12 +101,21 @@ def KDF_AUTH(root_key: bytes, update_key: bytes, epoch: int) -> tuple[bytes, byt
 
 
 def KDF_OK(shared_secret: bytes, epoch: int) -> bytes:
+    """Derive an output key for SCKA from the shared secret for `epoch`.
+
+    Returns a 32-byte key used by the SCKA authenticator and KDF chains.
+    """
     info = _concat_bytes(PROTOCOL_INFO, b":SCKA Key", _to_bytes_epoch(epoch))
     prk = _hkdf_extract(b"\x00" * 32, shared_secret)
     return _hkdf_expand(prk, info, 32)
 
 
 def KDF_SCKA_INIT(sk: bytes) -> tuple[bytes, bytes, bytes]:
+    """Initialize the SCKA root and first chain keys from `sk`.
+
+    Returns `(RK, CK_send, CK_recv)` where RK is the root key and CK_* are
+    initial chain keys for send/receive directions.
+    """
     info = _concat_bytes(PROTOCOL_INFO, b":SCKA Init")
     prk = _hkdf_extract(b"\x00" * 32, sk)
     output = _hkdf_expand(prk, info, 96)
@@ -100,6 +123,10 @@ def KDF_SCKA_INIT(sk: bytes) -> tuple[bytes, bytes, bytes]:
 
 
 def KDF_SCKA_RK(rk: bytes, scka_output: bytes) -> tuple[bytes, bytes, bytes]:
+    """Derive a new RK and chain keys from the current `rk` and SCKA output.
+
+    Returns `(new_RK, CK_send, CK_recv)` used to seed epoch KDF chains.
+    """
     info = _concat_bytes(PROTOCOL_INFO, b":SCKA RK")
     prk = _hkdf_extract(rk, scka_output)
     output = _hkdf_expand(prk, info, 96)
@@ -107,6 +134,10 @@ def KDF_SCKA_RK(rk: bytes, scka_output: bytes) -> tuple[bytes, bytes, bytes]:
 
 
 def KDF_SCKA_CK(ck: bytes, ctr: int) -> tuple[bytes, bytes]:
+    """Advance a SCKA chain key by `ctr` and return `(new_ck, mk)`.
+
+    Produces a new chain key and a single message key suitable for AEAD.
+    """
     info = _concat_bytes(PROTOCOL_INFO, b":SCKA CK", _to_bytes_epoch(ctr))
     prk = _hkdf_extract(ck, _to_bytes_epoch(ctr))
     output = _hkdf_expand(prk, info, 64)
@@ -114,10 +145,21 @@ def KDF_SCKA_CK(ck: bytes, ctr: int) -> tuple[bytes, bytes]:
 
 
 def KDFChain(ck: bytes) -> KdfChainState:
+    """Create a new `KdfChainState` initialized with chain key `ck`.
+
+    The returned object keeps the current counter `N` used for deriving
+    subsequent message keys.
+    """
     return KdfChainState(CK=ck, N=0)
 
 
 class Authenticator:
+    """Epoch-authentication helper used by the SPQR SCKA handshake.
+
+    The `Authenticator` maintains a root key and a per-epoch MAC key used to
+    authenticate incremental KEM headers and ciphertexts. Methods are a thin
+    wrapper around the KDF and HMAC helpers above.
+    """
     @staticmethod
     def Init(epoch: int, key: bytes) -> AuthenticatorState:
         state = AuthenticatorState(root_key=b"\x00" * 32, mac_key=None)
@@ -156,6 +198,11 @@ class Authenticator:
 
 
 class SimIncrementalKEM:
+    """Wrapper around the external incremental KEM implementation.
+
+    The class exposes the small interface required by the SCKA node state
+    machine and delegates actual cryptographic operations to `modules.external`.
+    """
     @staticmethod
     def KeyGen() -> tuple[bytes, bytes, bytes]:
         return ext.SPQR_INCREMENTAL_KEM_KEYGEN()
@@ -851,6 +898,11 @@ def SCKARatchetEncrypt(
     plaintext: bytes,
     AD: bytes,
 ) -> tuple[SpqrHeader, bytes, dict[str, Any]]:
+    """Encrypt a message using the SPQR ratchet and return tracing info.
+
+    Returns `(header, ciphertext, trace)` where `trace` contains KDF and
+    epoch information useful for visualization and debugging in the demo.
+    """
     msg, n, mk, key_trace = SCKARatchetSendKey(state)
     header = SpqrHeader(msg=msg, n=n)
     ad_header = _concat_ad_header(AD, header)
@@ -942,6 +994,11 @@ def SCKARatchetDecrypt(
     ciphertext: bytes,
     AD: bytes,
 ) -> tuple[bytes, dict[str, Any]]:
+    """Decrypt a SPQR ciphertext and return `(plaintext, trace)`.
+
+    `trace` contains the key-derivation and epoch metadata used by the UI to
+    explain the decryption step.
+    """
     mk, key_trace = SCKARatchetReceiveKey(state, header)
     ad_header = _concat_ad_header(AD, header)
     plaintext = ext.DECRYPT(mk, ciphertext, ad_header)

@@ -7,6 +7,15 @@ from modules.base_view import last_n_chars
 from modules import external as ext
 from modules.messaging.messaging_base_view import get_key_display_label, get_key_tooltip_text
 
+"""Attacker analysis helpers for Double Ratchet visualization.
+
+This module provides utilities used by the attacker dashboard UI to enumerate
+potential secrets (RKs, CKs, DHs, MKs), attempt decryption using selected
+compromised secrets, and compute implied secrets discovered from successful
+decryptions. The functions are written for use by the educational UI and
+prioritize clarity over performance.
+"""
+
 
 def _message_entries_for_attacker(
     session: DoubleRatchetState,
@@ -50,6 +59,11 @@ def _message_entries_for_attacker(
 
 
 def collect_attacker_secret_options(session: DoubleRatchetState) -> list[dict[str, Any]]:
+    """Collect a list of candidate secrets the attacker can choose to compromise.
+
+    Returns a list of option dicts with metadata suitable for rendering in the
+    attacker UI (labels, kinds, associated party and context information).
+    """
     options: list[dict[str, Any]] = []
 
     def add_option(key_id: str, label: str, kind: str, value: Any) -> None:
@@ -195,6 +209,10 @@ def _try_decrypt_with_message_key(entry: dict[str, Any], mk: bytes, session_ad: 
 
 
 def _derive_chain_message_key(chain_key: bytes, step_count: int) -> bytes | None:
+    """Derive the message key after advancing `step_count` times from `chain_key`.
+
+    Returns the derived message key (`mk`) or `None` if inputs are invalid.
+    """
     if not isinstance(chain_key, bytes) or not chain_key or step_count < 1:
         return None
 
@@ -211,6 +229,12 @@ def decrypt_with_attacker_selection(
     compromised_secrets: dict[str, dict[str, Any]],
     session_ad: bytes = b"",
 ) -> list[dict[str, Any]]:
+    """Attempt to decrypt all messages using the provided `compromised_secrets`.
+
+    Returns a list of analysis results indicating which messages are
+    decryptable, the discovered plaintexts, and metadata describing how the
+    plaintext was recovered.
+    """
     messages = _message_entries_for_attacker(session, pending_messages)
     results: list[dict[str, Any]] = [
         {
@@ -749,6 +773,11 @@ def get_attacker_analysis(
     compromised_secrets: dict[str, dict[str, Any]],
     session_ad: bytes = b"",
 ) -> list[dict[str, Any]]:
+    """Compatibility wrapper used by the UI to run attacker analysis.
+
+    Delegates to `decrypt_with_attacker_selection` and returns the same
+    analysis structure expected by the attacker dashboard view.
+    """
     return decrypt_with_attacker_selection(session, pending_messages, compromised_secrets, session_ad)
 
 
@@ -927,6 +956,12 @@ def compute_implied_known_ids(
     session_ad: bytes,
     selected_ids: set[str],
 ) -> set[str]:
+    """Compute secrets that are implied by a set of already selected secrets.
+
+    When an attacker compromises certain keys, other keys may become
+    recoverable (implied) — this function iteratively discovers such keys by
+    running the decryption analysis on the currently-known subset.
+    """
     known_ids = {key_id for key_id in selected_ids if key_id in options_by_id}
 
     changed = True

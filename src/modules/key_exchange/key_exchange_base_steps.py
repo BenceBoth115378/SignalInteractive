@@ -1,3 +1,11 @@
+"""Shared step-visualization helpers for key-exchange protocols.
+
+The functions here assemble the common diagram fragments used by both X3DH
+and PQXDH when showing how keys are generated, signed, exchanged, and used to
+derive the final shared secret. Protocol-specific visualizers compose these
+helpers to keep the step dialogs compact and consistent.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Callable
