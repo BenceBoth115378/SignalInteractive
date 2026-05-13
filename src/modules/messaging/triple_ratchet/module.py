@@ -19,6 +19,7 @@ from components.data_classes import (
     BraidProtocolState,
     DecoderState,
     DHKeyPair,
+    DRHeader,
     EncoderState,
     EpochKdfChains,
     KdfChainState,
@@ -30,6 +31,7 @@ from components.data_classes import (
     SckaOutputKey,
     SckaReceiveResult,
     SckaSendResult,
+    SendStepVisualizationSnapshot,
     SpqrHeader,
     SpqrMessageType,
     SpqrRatchetState,
@@ -125,6 +127,14 @@ def _class_map() -> dict[str, type]:
         "EkReceivedCt1Sampled": EkReceivedCt1Sampled,
         "Ct1Acknowledged": Ct1Acknowledged,
         "Ct2Sampled": Ct2Sampled,
+        "DRHeader": DRHeader,
+        "PartyStateSnapshot": PartyStateSnapshot,
+        "SendStepVisualizationSnapshot": SendStepVisualizationSnapshot,
+        "ReceiveStepVisualizationSnapshot": ReceiveStepVisualizationSnapshot,
+        "TripleRatchetHeader": TripleRatchetHeader,
+        "TripleRatchetPartyStateSnapshot": TripleRatchetPartyStateSnapshot,
+        "TripleRatchetSendSnapshot": TripleRatchetSendSnapshot,
+        "TripleRatchetReceiveSnapshot": TripleRatchetReceiveSnapshot,
     }
 
 
@@ -851,6 +861,8 @@ class TripleRatchetModule(MessagingBaseModule):
             "pqxdh_alice_received_bob_reply": self._pqxdh_alice_received_bob_reply,
             "pending_show_alice_pqxdh_bootstrap": self._pending_show_alice_pqxdh_bootstrap,
             "last_bob_bootstrap_info": self._last_bob_bootstrap_info,
+            "send_steps": encode_nested(self._send_steps),
+            "receive_steps": encode_nested(self._receive_steps),
         }
 
     def import_state(self, data: dict) -> None:
@@ -933,8 +945,10 @@ class TripleRatchetModule(MessagingBaseModule):
         self._pqxdh_alice_received_bob_reply = bool(data.get("pqxdh_alice_received_bob_reply", False))
         self._pending_show_alice_pqxdh_bootstrap = bool(data.get("pending_show_alice_pqxdh_bootstrap", True))
         self._last_bob_bootstrap_info = data.get("last_bob_bootstrap_info") if isinstance(data.get("last_bob_bootstrap_info"), dict) else None
-        self._send_steps.clear()
-        self._receive_steps.clear()
+        raw_send = decode_nested(data.get("send_steps", {}), cmap)
+        self._send_steps = raw_send if isinstance(raw_send, dict) else {}
+        raw_receive = decode_nested(data.get("receive_steps", {}), cmap)
+        self._receive_steps = raw_receive if isinstance(raw_receive, dict) else {}
         self._initial_warning_shown = True
 
         if self.session.alice is None and self._pqxdh_bootstrap_payload is not None:

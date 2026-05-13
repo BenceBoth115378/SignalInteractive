@@ -299,6 +299,8 @@ class DoubleRatchetModule(MessagingBaseModule):
             "x3dh_alice_received_bob_reply": self._x3dh_alice_received_bob_reply,
             "pending_show_alice_x3dh_bootstrap": self._pending_show_alice_x3dh_bootstrap,
             "attacker_compromised_secrets": encode_nested(self._attacker_compromised_secrets),
+            "send_steps": encode_nested(self._send_steps),
+            "receive_steps": encode_nested(self._receive_steps),
         }
 
     def import_state(self, data: dict) -> None:
@@ -386,6 +388,16 @@ class DoubleRatchetModule(MessagingBaseModule):
         max_pending_seq_id = max((item["id"] for item in self.pending_messages), default=0)
         self._next_pending_id = max(max_log_seq_id, max_pending_seq_id) + 1
 
+        step_class_map = {
+            "DRHeader": DRHeader,
+            "PartyStateSnapshot": PartyStateSnapshot,
+            "SendStepVisualizationSnapshot": SendStepVisualizationSnapshot,
+            "ReceiveStepVisualizationSnapshot": ReceiveStepVisualizationSnapshot,
+        }
+        raw_send = decode_nested(data.get("send_steps", {}), step_class_map)
+        self._send_steps = raw_send if isinstance(raw_send, dict) else {}
+        raw_receive = decode_nested(data.get("receive_steps", {}), step_class_map)
+        self._receive_steps = raw_receive if isinstance(raw_receive, dict) else {}
         self._initial_warning_shown = True
 
         if self._x3dh_shared_secret is None or self._x3dh_bob_spk_pair is None:

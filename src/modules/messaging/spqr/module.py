@@ -499,6 +499,8 @@ class SPQRModule(MessagingBaseModule):
             "pqxdh_alice_received_bob_reply": self._pqxdh_alice_received_bob_reply,
             "pending_show_alice_pqxdh_bootstrap": self._pending_show_alice_pqxdh_bootstrap,
             "last_bob_bootstrap_info": encode_nested(self._last_bob_bootstrap_info),
+            "send_steps": encode_nested(self._send_steps),
+            "receive_steps": encode_nested(self._receive_steps),
         }
 
     def import_state(self, data: dict) -> None:
@@ -533,8 +535,10 @@ class SPQRModule(MessagingBaseModule):
         self._pending_show_alice_pqxdh_bootstrap = bool(data.get("pending_show_alice_pqxdh_bootstrap", True))
         decoded_last_bootstrap = decode_nested(data.get("last_bob_bootstrap_info"), class_map)
         self._last_bob_bootstrap_info = decoded_last_bootstrap if isinstance(decoded_last_bootstrap, dict) else None
-        self._send_steps.clear()
-        self._receive_steps.clear()
+        raw_send_steps = decode_nested(data.get("send_steps", {}), class_map)
+        self._send_steps = raw_send_steps if isinstance(raw_send_steps, dict) else {}
+        raw_receive_steps = decode_nested(data.get("receive_steps", {}), class_map)
+        self._receive_steps = raw_receive_steps if isinstance(raw_receive_steps, dict) else {}
         self._initial_warning_shown = True
 
         if self.session.alice is None and self._pqxdh_bootstrap_payload is not None:
